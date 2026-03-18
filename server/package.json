@@ -4,8 +4,8 @@
   "description": "OutreachEngine backend API",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "prisma generate && (tsc || true)",
-    "start": "node dist/index.js",
+    "build": "prisma generate",
+    "start": "tsx src/index.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -25,6 +25,9 @@
     "express-rate-limit": "^7.4.1",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
+    "prisma": "^5.19.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -33,9 +36,6 @@
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.7.5",
-    "@types/node-cron": "^3.0.11",
-    "prisma": "^5.19.0",
-    "tsx": "^4.19.1",
-    "typescript": "^5.6.3"
+    "@types/node-cron": "^3.0.11"
   }
 }
