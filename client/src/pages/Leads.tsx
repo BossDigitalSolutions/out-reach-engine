@@ -60,6 +60,7 @@ interface Lead {
     quality?: { score: number; urgency: string; issues: string[] };
   } | null;
   ghlContactId?: string | null;
+  customDemoLink?: string | null;
   createdAt: string;
   _count: { emails: number; notes: number };
 }
