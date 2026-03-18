@@ -45,6 +45,8 @@ model Settings {
   industryWeights   Json?
   whatsAppPhoneId   String?
   whatsAppToken     String?
+  ghlApiKey         String?
+  ghlLocationId     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -71,6 +73,7 @@ model Lead {
   followupsEnabled Boolean    @default(true)
   customDemoLink   String?
   placeId          String?
+  ghlContactId     String?
   ownerTitle       String?
   linkedinUrl      String?
   websiteData      Json?

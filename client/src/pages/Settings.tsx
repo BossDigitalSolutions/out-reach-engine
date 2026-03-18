@@ -45,6 +45,8 @@ interface Settings {
   hasSendgridApiKey: boolean;
   hasWhatsAppToken: boolean;
   whatsAppPhoneId?: string;
+  hasGhlApiKey: boolean;
+  ghlLocationId?: string;
 }
 
 interface ApiKeyField {
@@ -84,6 +86,7 @@ export default function Settings() {
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [whatsAppPhoneId, setWhatsAppPhoneId] = useState('');
+  const [ghlLocationId, setGhlLocationId] = useState('');
   const [form, setForm] = useState({
     senderName: '',
     senderEmail: '',
@@ -123,6 +126,7 @@ export default function Settings() {
         setIndustryWeights({ ...Object.fromEntries(INDUSTRY_LIST.map((i) => [i.key, 20])), ...settings.industryWeights });
       }
       if (settings.whatsAppPhoneId) setWhatsAppPhoneId(settings.whatsAppPhoneId);
+      if (settings.ghlLocationId) setGhlLocationId(settings.ghlLocationId);
     }
   }, [settings]);
 
@@ -144,6 +148,7 @@ export default function Settings() {
   const handleSave = () => {
     const payload: Record<string, unknown> = { ...form, industryWeights };
     if (whatsAppPhoneId.trim()) payload.whatsAppPhoneId = whatsAppPhoneId.trim();
+    if (ghlLocationId.trim()) payload.ghlLocationId = ghlLocationId.trim();
     // Only include API keys if user entered new values
     for (const [key, value] of Object.entries(apiKeys)) {
       if (value.trim()) payload[key] = value.trim();
@@ -407,6 +412,80 @@ export default function Settings() {
               <span className="text-sm text-slate-400 w-6 text-right">{industryWeights[key] ?? 20}</span>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* GoHighLevel */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-4.5 h-4.5 rounded bg-orange-500 flex items-center justify-center flex-shrink-0">
+            <span className="text-white font-bold text-xs leading-none">G</span>
+          </div>
+          <h2 className="text-base font-semibold text-slate-100">GoHighLevel</h2>
+          <span className="text-xs text-slate-500 ml-1">optional</span>
+          {settings?.hasGhlApiKey && (
+            <div className="flex items-center gap-1 text-xs text-green-400 ml-auto">
+              <CheckCircle size={12} />
+              Connected
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-slate-500">
+          Push leads to your GHL account as contacts, then send WhatsApp messages, emails, and SMS
+          through GHL's platform — all conversations managed in one place.
+        </p>
+        <div className="bg-orange-900/10 border border-orange-800/30 rounded-lg px-3 py-2 text-xs text-orange-300 space-y-1">
+          <p className="font-medium">How to connect:</p>
+          <ol className="list-decimal list-inside space-y-0.5 text-orange-400/80">
+            <li>In GHL, go to Settings → API Keys → create a Location API Key</li>
+            <li>Copy the API Key and paste it below</li>
+            <li>Find your Location ID in Settings → Business Info (the ID in the URL)</li>
+            <li>Save — then use "Sync to GHL" on any lead</li>
+          </ol>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="label mb-0">GHL API Key (Location key)</label>
+            {settings?.hasGhlApiKey ? (
+              <div className="flex items-center gap-1 text-xs text-green-400">
+                <CheckCircle size={12} />
+                Configured
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-xs text-slate-500">
+                <XCircle size={12} />
+                Not set
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <input
+              type={showKeys['ghlApiKey'] ? 'text' : 'password'}
+              className="input pr-10"
+              placeholder={settings?.hasGhlApiKey ? '••••••••' : 'eyJhbGci...'}
+              value={apiKeys['ghlApiKey'] || ''}
+              onChange={(e) => setApiKeys((k) => ({ ...k, ghlApiKey: e.target.value }))}
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+              onClick={() => setShowKeys((s) => ({ ...s, ghlApiKey: !s['ghlApiKey'] }))}
+            >
+              {showKeys['ghlApiKey'] ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className="label">Location ID</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="e.g. ABCDEFGhijklm12345"
+            value={ghlLocationId}
+            onChange={(e) => setGhlLocationId(e.target.value)}
+          />
+          <p className="text-xs text-slate-600 mt-1">Found in GHL URL: app.gohighlevel.com/location/<strong>YOUR_ID</strong>/...</p>
         </div>
       </div>
 

@@ -12,6 +12,7 @@ import analyticsRoutes from './routes/analytics';
 import settingsRoutes from './routes/settings';
 import revenueRoutes from './routes/revenue';
 import whatsAppRoutes from './routes/whatsapp';
+import ghlRoutes from './routes/ghl';
 import { startScheduler } from './services/scheduler';
 
 dotenv.config();
@@ -41,6 +42,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/revenue', revenueRoutes);
 app.use('/api/whatsapp', whatsAppRoutes);
+app.use('/api/ghl', ghlRoutes);
 
 // Unsubscribe route (public)
 app.get('/unsubscribe/:token', async (req, res) => {

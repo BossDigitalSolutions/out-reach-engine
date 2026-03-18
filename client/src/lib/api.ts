@@ -107,6 +107,15 @@ export const prebuiltTemplatesApi = {
   copyToMine: (data: Record<string, unknown>) => api.post('/templates', data),
 };
 
+// GoHighLevel
+export const ghlApi = {
+  sync: (leadIds: string[]) => api.post('/ghl/sync', { leadIds }),
+  message: (leadId: string, message: string, type: 'WhatsApp' | 'Email' | 'SMS', subject?: string) =>
+    api.post('/ghl/message', { leadId, message, type, subject }),
+  conversations: (leadId: string) => api.get(`/ghl/conversations/${leadId}`),
+  status: () => api.get('/ghl/status'),
+};
+
 // WhatsApp
 export const whatsAppApi = {
   send: (leadId: string, message: string) =>

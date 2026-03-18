@@ -26,7 +26,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { leadsApi, emailsApi, whatsAppApi } from '../lib/api';
+import { leadsApi, emailsApi, whatsAppApi, ghlApi } from '../lib/api';
 import api from '../lib/api';
 import { getStatusColor, getStatusLabel, formatDate, LEAD_STATUSES } from '../lib/utils';
 
@@ -59,6 +59,7 @@ interface Lead {
     enrichedAt?: string;
     quality?: { score: number; urgency: string; issues: string[] };
   } | null;
+  ghlContactId?: string | null;
   createdAt: string;
   _count: { emails: number; notes: number };
 }
@@ -139,6 +140,7 @@ export default function Leads() {
   const [sendPerDay, setSendPerDay] = useState(30);
   const [sortBy, setSortBy] = useState('createdAt');
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
+  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -262,6 +264,24 @@ export default function Leads() {
     }
   };
 
+  const syncToGhl = async (leadIds: string[]) => {
+    leadIds.forEach((id) => setSyncingIds((s) => new Set(s).add(id)));
+    try {
+      const res = await ghlApi.sync(leadIds);
+      const { synced, errors } = res.data as { synced: number; errors: number };
+      if (errors > 0) toast.error(`${errors} lead(s) failed to sync — check GHL credentials in Settings`);
+      if (synced > 0) toast.success(`${synced} lead${synced !== 1 ? 's' : ''} pushed to GoHighLevel`);
+      qc.invalidateQueries({ queryKey: ['leads'] });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'GHL sync failed';
+      toast.error(msg);
+    } finally {
+      leadIds.forEach((id) =>
+        setSyncingIds((s) => { const next = new Set(s); next.delete(id); return next; })
+      );
+    }
+  };
+
   const sendNowMutation = useMutation({
     mutationFn: (emailId: string) => emailsApi.sendNow(emailId),
     onSuccess: () => {
@@ -335,6 +355,17 @@ export default function Leads() {
                     Generate Emails ({selected.size})
                   </>
                 )}
+              </button>
+              <button
+                className="btn-secondary flex items-center gap-2 text-orange-300 hover:text-orange-200 border-orange-800/50 hover:bg-orange-900/20"
+                onClick={() => syncToGhl(Array.from(selected))}
+                disabled={syncingIds.size > 0}
+                title="Push selected leads to GoHighLevel"
+              >
+                <div className="w-3.5 h-3.5 rounded bg-orange-500 flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-bold text-xs leading-none" style={{ fontSize: 9 }}>G</span>
+                </div>
+                Sync to GHL ({selected.size})
               </button>
               <button
                 className="btn-danger flex items-center gap-1"
@@ -468,7 +499,17 @@ export default function Leads() {
                     </td>
                     <td className="table-cell">
                       <div>
-                        <p className="font-medium text-slate-200">{lead.businessName}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-slate-200">{lead.businessName}</p>
+                          {lead.ghlContactId && (
+                            <span
+                              title="Synced to GoHighLevel"
+                              className="inline-flex items-center justify-center w-4 h-4 rounded bg-orange-500/80 flex-shrink-0"
+                            >
+                              <span className="text-white font-bold leading-none" style={{ fontSize: 9 }}>G</span>
+                            </span>
+                          )}
+                        </div>
                         {lead.industry && (
                           <p className="text-xs text-slate-500">{lead.industry}</p>
                         )}
@@ -620,6 +661,24 @@ export default function Leads() {
                             <MessageCircle size={14} />
                           </button>
                         )}
+                        <button
+                          onClick={() => syncToGhl([lead.id])}
+                          disabled={syncingIds.has(lead.id)}
+                          className={`p-1.5 rounded transition-colors ${
+                            lead.ghlContactId
+                              ? 'text-orange-400 hover:text-orange-300 hover:bg-slate-700'
+                              : 'text-slate-500 hover:text-orange-400 hover:bg-slate-700'
+                          }`}
+                          title={lead.ghlContactId ? 'Re-sync to GoHighLevel' : 'Push to GoHighLevel'}
+                        >
+                          {syncingIds.has(lead.id) ? (
+                            <span className="w-3.5 h-3.5 border border-orange-400 border-t-transparent rounded-full animate-spin inline-block" />
+                          ) : (
+                            <div className="w-3.5 h-3.5 rounded bg-orange-500/60 hover:bg-orange-500 flex items-center justify-center transition-colors">
+                              <span className="text-white font-bold leading-none" style={{ fontSize: 8 }}>G</span>
+                            </div>
+                          )}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1002,16 +1061,21 @@ function WhatsAppModal({
   const [message, setMessage] = useState('');
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendingViaGhl, setSendingViaGhl] = useState(false);
   const [history, setHistory] = useState<WhatsAppMessage[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [lastWaLink, setLastWaLink] = useState('');
+  const [ghlConfigured, setGhlConfigured] = useState(false);
 
-  // Load message history on mount
+  // Load message history + GHL status on mount
   useState(() => {
     whatsAppApi.messages(lead.id)
       .then((r) => setHistory(r.data as WhatsAppMessage[]))
       .catch(() => {})
       .finally(() => setLoadingHistory(false));
+    ghlApi.status()
+      .then((r) => setGhlConfigured((r.data as { configured: boolean }).configured))
+      .catch(() => {});
   });
 
   const handleGenerate = async () => {
@@ -1049,6 +1113,21 @@ function WhatsAppModal({
       toast.error(msg);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleSendViaGhl = async () => {
+    if (!message.trim()) return toast.error('Enter a message first');
+    setSendingViaGhl(true);
+    try {
+      await ghlApi.message(lead.id, message.trim(), 'WhatsApp');
+      toast.success('Sent via GoHighLevel — check your GHL inbox for the conversation');
+      onSent();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'GHL send failed';
+      toast.error(msg);
+    } finally {
+      setSendingViaGhl(false);
     }
   };
 
@@ -1155,25 +1234,49 @@ function WhatsAppModal({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-slate-800 p-4 flex items-center gap-3">
-          <button
-            className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
-            onClick={handleSend}
-            disabled={sending || !message.trim()}
-          >
-            {sending ? (
-              <>
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Sending...
-              </>
-            ) : (
-              <>
-                <MessageCircle size={16} />
-                Send WhatsApp
-              </>
-            )}
-          </button>
-          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        <div className="border-t border-slate-800 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <button
+              className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+              onClick={handleSend}
+              disabled={sending || !message.trim()}
+            >
+              {sending ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <MessageCircle size={16} />
+                  Open in WhatsApp
+                </>
+              )}
+            </button>
+            <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          </div>
+          {ghlConfigured && (
+            <button
+              className="w-full flex items-center justify-center gap-2 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-700/50 text-orange-300 hover:text-orange-200 text-sm font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+              onClick={handleSendViaGhl}
+              disabled={sendingViaGhl || !message.trim()}
+            >
+              {sendingViaGhl ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-orange-300/30 border-t-orange-300 rounded-full animate-spin" />
+                  Sending via GHL...
+                </>
+              ) : (
+                <>
+                  <div className="w-4 h-4 rounded bg-orange-500 flex items-center justify-center flex-shrink-0">
+                    <span className="text-white font-bold leading-none" style={{ fontSize: 9 }}>G</span>
+                  </div>
+                  Send via GoHighLevel
+                  {lead.ghlContactId && <span className="text-xs text-orange-400/70 ml-1">synced</span>}
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

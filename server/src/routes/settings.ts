@@ -12,6 +12,8 @@ const settingsSchema = z.object({
   sendgridApiKey: z.string().optional(),
   whatsAppPhoneId: z.string().optional(),
   whatsAppToken: z.string().optional(),
+  ghlApiKey: z.string().optional(),
+  ghlLocationId: z.string().optional(),
   senderName: z.string().optional(),
   senderEmail: z.string().email().optional().or(z.literal('')),
   emailSignature: z.string().optional(),
@@ -75,10 +77,12 @@ function maskApiKeys(settings: Record<string, unknown>) {
     anthropicApiKey: settings.anthropicApiKey ? '••••••••' : null,
     sendgridApiKey: settings.sendgridApiKey ? '••••••••' : null,
     whatsAppToken: settings.whatsAppToken ? '••••••••' : null,
+    ghlApiKey: settings.ghlApiKey ? '••••••••' : null,
     hasGoogleApiKey: !!settings.googleApiKey,
     hasAnthropicApiKey: !!settings.anthropicApiKey,
     hasSendgridApiKey: !!settings.sendgridApiKey,
     hasWhatsAppToken: !!settings.whatsAppToken,
+    hasGhlApiKey: !!settings.ghlApiKey,
   };
 }
 
