@@ -26,7 +26,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { leadsApi, emailsApi, whatsAppApi, ghlApi } from '../lib/api';
+import { leadsApi, emailsApi, whatsAppApi, ghlApi, demosApi } from '../lib/api';
 import api from '../lib/api';
 import { getStatusColor, getStatusLabel, formatDate, LEAD_STATUSES } from '../lib/utils';
 
@@ -143,6 +143,13 @@ export default function Leads() {
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
+  const [selectedDemoId, setSelectedDemoId] = useState('');
+
+  const { data: demosData } = useQuery({
+    queryKey: ['demos'],
+    queryFn: () => demosApi.list().then((r) => r.data),
+  });
+  const demos: { id: string; label: string; industry: string }[] = demosData || [];
 
   const { data, isLoading } = useQuery({
     queryKey: ['leads', page, search, status, hasWebsite, sortBy],
@@ -193,7 +200,7 @@ export default function Leads() {
 
   const generateMutation = useMutation({
     mutationFn: () =>
-      emailsApi.generate(Array.from(selected), tone).then((r) => r.data),
+      emailsApi.generate(Array.from(selected), tone, selectedDemoId || undefined).then((r) => r.data),
     onSuccess: (emails) => {
       setGeneratedEmails(emails);
       setShowEmailModal(true);
@@ -338,6 +345,17 @@ export default function Leads() {
                   <option key={t.value} value={t.value}>
                     {t.label}
                   </option>
+                ))}
+              </select>
+              <select
+                className="select text-xs"
+                value={selectedDemoId}
+                onChange={(e) => setSelectedDemoId(e.target.value)}
+                title="Demo link to include in emails"
+              >
+                <option value="">Demo link: auto-match</option>
+                {demos.map((d) => (
+                  <option key={d.id} value={d.id}>{d.label} ({d.industry})</option>
                 ))}
               </select>
               <button

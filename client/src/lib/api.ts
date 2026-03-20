@@ -60,8 +60,8 @@ export const scraperApi = {
 // Emails
 export const emailsApi = {
   list: (params?: Record<string, unknown>) => api.get('/emails', { params }),
-  generate: (leadIds: string[], tone?: string) =>
-    api.post('/emails/generate', { leadIds, tone }),
+  generate: (leadIds: string[], tone?: string, demoLinkId?: string) =>
+    api.post('/emails/generate', { leadIds, tone, demoLinkId }),
   update: (id: string, data: Record<string, unknown>) => api.put(`/emails/${id}`, data),
   schedule: (id: string, scheduledAt: string) =>
     api.post(`/emails/${id}/schedule`, { scheduledAt }),

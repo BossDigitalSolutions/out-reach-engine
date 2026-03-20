@@ -77,8 +77,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // POST /api/emails/generate
 router.post('/generate', async (req: AuthRequest, res: Response) => {
   try {
-    const { leadIds, tone } = z
-      .object({ leadIds: z.array(z.string()), tone: z.string().optional() })
+    const { leadIds, tone, demoLinkId } = z
+      .object({ leadIds: z.array(z.string()), tone: z.string().optional(), demoLinkId: z.string().optional() })
       .parse(req.body);
 
     const settings = await prisma.settings.findUnique({
@@ -108,6 +108,7 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
 
     for (const lead of leads) {
       const demoLink =
+        (demoLinkId ? demoLinks.find((d) => d.id === demoLinkId)?.url : null) ||
         lead.customDemoLink ||
         demoLinks.find(
           (d) =>

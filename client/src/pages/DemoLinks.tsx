@@ -13,7 +13,7 @@ interface DemoLink {
   createdAt: string;
 }
 
-const DEFAULT_FORM = { industry: '', url: '', label: '' };
+const DEFAULT_FORM = { industry: '', customIndustry: '', url: '', label: '' };
 
 export default function DemoLinks() {
   const qc = useQueryClient();
@@ -27,7 +27,7 @@ export default function DemoLinks() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => demosApi.create(form),
+    mutationFn: () => demosApi.create({ ...form, industry: form.industry === 'custom' ? form.customIndustry : form.industry }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['demos'] });
       setCreating(false);
@@ -43,7 +43,7 @@ export default function DemoLinks() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: () => demosApi.update(editing!.id, form),
+    mutationFn: () => demosApi.update(editing!.id, { ...form, industry: form.industry === 'custom' ? form.customIndustry : form.industry }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['demos'] });
       setEditing(null);
@@ -63,7 +63,8 @@ export default function DemoLinks() {
 
   const openEdit = (demo: DemoLink) => {
     setEditing(demo);
-    setForm({ industry: demo.industry, url: demo.url, label: demo.label });
+    const isPreset = INDUSTRIES.includes(demo.industry);
+    setForm({ industry: isPreset ? demo.industry : 'custom', customIndustry: isPreset ? '' : demo.industry, url: demo.url, label: demo.label });
   };
 
   const openCreate = () => {
@@ -185,15 +186,23 @@ export default function DemoLinks() {
                 <select
                   className="select w-full"
                   value={form.industry}
-                  onChange={(e) => setForm((f) => ({ ...f, industry: e.target.value }))}
+                  onChange={(e) => setForm((f) => ({ ...f, industry: e.target.value, customIndustry: '' }))}
                 >
                   <option value="">Select industry...</option>
                   {INDUSTRIES.map((ind) => (
-                    <option key={ind} value={ind}>
-                      {ind}
-                    </option>
+                    <option key={ind} value={ind}>{ind}</option>
                   ))}
+                  <option value="custom">Custom...</option>
                 </select>
+                {form.industry === 'custom' && (
+                  <input
+                    type="text"
+                    className="input mt-2"
+                    placeholder="e.g., Thai Restaurant, Tattoo Studio"
+                    value={form.customIndustry}
+                    onChange={(e) => setForm((f) => ({ ...f, customIndustry: e.target.value }))}
+                  />
+                )}
               </div>
 
               <div>
@@ -213,7 +222,7 @@ export default function DemoLinks() {
                 className="btn-primary flex-1"
                 onClick={() => (creating ? createMutation.mutate() : updateMutation.mutate())}
                 disabled={
-                  !form.label || !form.industry || !form.url ||
+                  !form.label || !form.industry || (form.industry === 'custom' && !form.customIndustry) || !form.url ||
                   createMutation.isPending || updateMutation.isPending
                 }
               >
