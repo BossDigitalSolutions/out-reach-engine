@@ -28,11 +28,12 @@ export default api;
 
 // Auth
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post('/auth/login', { email, password }),
+  login: (email: string, password: string, totpCode?: string) =>
+    api.post('/auth/login', { email, password, totpCode }),
   register: (email: string, password: string, name?: string) =>
     api.post('/auth/register', { email, password, name }),
   me: () => api.get('/auth/me'),
+  logout: () => api.post('/auth/logout'),
 };
 
 // Leads
@@ -130,4 +131,35 @@ export const whatsAppApi = {
 export const settingsApi = {
   get: () => api.get('/settings'),
   update: (data: Record<string, unknown>) => api.put('/settings', data),
+};
+
+// Team (admin only)
+export const teamApi = {
+  list: () => api.get('/team'),
+  create: (data: Record<string, unknown>) => api.post('/team', data),
+  setRole: (id: string, role: 'ADMIN' | 'MEMBER') => api.patch(`/team/${id}/role`, { role }),
+  remove: (id: string) => api.delete(`/team/${id}`),
+  unlock: (id: string) => api.post(`/team/${id}/unlock`),
+};
+
+// Activity Log (admin only)
+export const activityLogApi = {
+  list: (params?: Record<string, unknown>) => api.get('/activity-log', { params }),
+  actions: () => api.get('/activity-log/actions'),
+};
+
+// Sessions
+export const sessionsApi = {
+  list: () => api.get('/sessions'),
+  revoke: (id: string) => api.delete(`/sessions/${id}`),
+  revokeAll: (all?: boolean) => api.delete('/sessions', { data: { all } }),
+  listAll: () => api.get('/sessions/all'),
+  forceLogout: (userId: string) => api.delete(`/sessions/user/${userId}`),
+};
+
+// 2FA
+export const twoFactorApi = {
+  setup: () => api.post('/2fa/setup'),
+  verify: (code: string) => api.post('/2fa/verify', { code }),
+  disable: (code: string) => api.post('/2fa/disable', { code }),
 };

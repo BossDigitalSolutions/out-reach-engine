@@ -7,22 +7,65 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum UserRole {
+  ADMIN
+  MEMBER
+}
 
-  settings  Settings?
-  leads     Lead[]
-  templates EmailTemplate[]
-  demoLinks DemoLink[]
-  emails            Email[]
-  notes             Note[]
-  revenue           RevenueEntry[]
-  whatsAppMessages  WhatsAppMessage[]
+model User {
+  id                  String     @id @default(cuid())
+  email               String     @unique
+  password            String
+  name                String?
+  role                UserRole   @default(MEMBER)
+  twoFactorEnabled    Boolean    @default(false)
+  twoFactorSecret     String?
+  backupCodes         String?    // JSON array of bcrypt-hashed codes
+  failedLoginAttempts Int        @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  settings         Settings?
+  leads            Lead[]
+  templates        EmailTemplate[]
+  demoLinks        DemoLink[]
+  emails           Email[]
+  notes            Note[]
+  revenue          RevenueEntry[]
+  whatsAppMessages WhatsAppMessage[]
+  sessions         Session[]
+  activityLogs     ActivityLog[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  tokenHash    String   @unique
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  lastActiveAt DateTime @default(now())
+  expiresAt    DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  userEmail  String?
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model Settings {
@@ -82,11 +125,11 @@ model Lead {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  emails            Email[]
-  notes             Note[]
-  revenue           RevenueEntry[]
-  whatsAppMessages  WhatsAppMessage[]
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emails           Email[]
+  notes            Note[]
+  revenue          RevenueEntry[]
+  whatsAppMessages WhatsAppMessage[]
 }
 
 enum LeadStatus {
@@ -203,7 +246,7 @@ model WhatsAppMessage {
   leadId      String
   phone       String
   message     String
-  status      String   @default("SENT")  // SENT, FAILED, OPENED_IN_APP
+  status      String   @default("SENT")
   waMessageId String?
   sentAt      DateTime @default(now())
 

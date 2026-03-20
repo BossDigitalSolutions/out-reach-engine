@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { prisma } from '../index';
 import { sendEmail } from './sendgrid';
 import { processFollowUps } from './followup';
+import { decryptField } from './encryption';
 
 export function startScheduler() {
   // Every 5 minutes: process scheduled emails
@@ -71,6 +72,11 @@ async function processScheduledEmails() {
         }
 
         try {
+          const sendgridKey = decryptField(setting.sendgridApiKey) || process.env.SENDGRID_API_KEY;
+          if (!sendgridKey) {
+            console.error(`No SendGrid key for user ${setting.userId}`);
+            continue;
+          }
           const messageId = await sendEmail(
             {
               to: email.lead.email,
@@ -81,7 +87,7 @@ async function processScheduledEmails() {
               unsubscribeToken: email.unsubscribeToken || undefined,
               serverUrl: process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3001}`,
             },
-            setting.sendgridApiKey!
+            sendgridKey
           );
 
           await prisma.email.update({

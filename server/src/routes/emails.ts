@@ -5,6 +5,8 @@ import { prisma } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { generateEmail } from '../services/claude';
 import { sendEmail } from '../services/sendgrid';
+import { decryptField } from '../services/encryption';
+import { logActivity } from '../services/activityLogger';
 
 const router = Router();
 
@@ -85,7 +87,7 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
       where: { userId: req.user!.userId },
     });
 
-    const apiKey = settings?.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+    const apiKey = decryptField(settings?.anthropicApiKey) || process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return res.status(400).json({
         error: 'Anthropic API key not configured. Add it in Settings.',
@@ -246,7 +248,7 @@ router.post('/:id/send-now', async (req: AuthRequest, res: Response) => {
       where: { userId: req.user!.userId },
     });
 
-    const apiKey = settings?.sendgridApiKey || process.env.SENDGRID_API_KEY;
+    const apiKey = decryptField(settings?.sendgridApiKey) || process.env.SENDGRID_API_KEY;
     if (!apiKey || !settings?.senderEmail) {
       return res.status(400).json({
         error: 'SendGrid API key and sender email are required. Configure them in Settings.',
@@ -287,6 +289,16 @@ router.post('/:id/send-now', async (req: AuthRequest, res: Response) => {
     await prisma.lead.update({
       where: { id: email.leadId },
       data: { status: 'CONTACTED' },
+    });
+
+    await logActivity({
+      userId: req.user!.userId,
+      userEmail: req.user!.email,
+      action: 'EMAIL_SENT',
+      targetType: 'lead',
+      targetId: email.leadId,
+      metadata: { subject: email.subject, to: email.lead.email },
+      req,
     });
 
     res.json({ message: 'Email sent successfully' });

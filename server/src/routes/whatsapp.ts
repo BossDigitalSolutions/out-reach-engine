@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { sendWhatsAppMessage, generateWhatsAppMessage } from '../services/whatsapp';
+import { decryptField } from '../services/encryption';
+import { logActivity } from '../services/activityLogger';
 
 const router = Router();
 router.use(authenticate);
@@ -27,7 +29,7 @@ router.post('/send', async (req: AuthRequest, res: Response) => {
     });
 
     const phoneNumberId = settings?.whatsAppPhoneId || process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const accessToken = settings?.whatsAppToken || process.env.WHATSAPP_ACCESS_TOKEN;
+    const accessToken = decryptField(settings?.whatsAppToken) || process.env.WHATSAPP_ACCESS_TOKEN;
 
     let waMessageId: string | undefined;
     let status = 'OPENED_IN_APP';
@@ -60,6 +62,20 @@ router.post('/send', async (req: AuthRequest, res: Response) => {
     await prisma.lead.updateMany({
       where: { id: lead.id, status: 'NEW' },
       data: { status: 'CONTACTED' },
+    });
+
+    await logActivity({
+      userId: req.user!.userId,
+      userEmail: req.user!.email,
+      action: 'WHATSAPP_SENT',
+      targetType: 'lead',
+      targetId: lead.id,
+      metadata: {
+        phone: lead.phone,
+        preview: message.substring(0, 100),
+        sentViaApi: status === 'SENT',
+      },
+      req,
     });
 
     // Build a wa.me link for manual fallback
@@ -113,7 +129,7 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
       where: { userId: req.user!.userId },
     });
 
-    const apiKey = settings?.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+    const apiKey = decryptField(settings?.anthropicApiKey) || process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return res.status(400).json({
         error: 'Anthropic API key not configured. Add it in Settings.',

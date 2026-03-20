@@ -9,6 +9,8 @@ import EmailTemplates from './pages/EmailTemplates';
 import DemoLinks from './pages/DemoLinks';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import Team from './pages/Team';
+import ActivityLog from './pages/ActivityLog';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -20,6 +22,14 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
     );
   }
   return user ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading, isAdmin } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!isAdmin) return <Navigate to="/" replace />;
+  return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -51,7 +61,26 @@ function AppRoutes() {
                 <Route path="/templates" element={<EmailTemplates />} />
                 <Route path="/demos" element={<DemoLinks />} />
                 <Route path="/analytics" element={<Analytics />} />
-                <Route path="/settings" element={<Settings />} />
+                <Route
+                  path="/settings"
+                  element={<Settings />}
+                />
+                <Route
+                  path="/team"
+                  element={
+                    <AdminRoute>
+                      <Team />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/activity-log"
+                  element={
+                    <AdminRoute>
+                      <ActivityLog />
+                    </AdminRoute>
+                  }
+                />
               </Routes>
             </Layout>
           </PrivateRoute>

@@ -63,7 +63,7 @@ export default function DemoLinks() {
 
   const openEdit = (demo: DemoLink) => {
     setEditing(demo);
-    const isPreset = INDUSTRIES.includes(demo.industry);
+    const isPreset = INDUSTRIES.includes(demo.industry as typeof INDUSTRIES[number]);
     setForm({ industry: isPreset ? demo.industry : 'custom', customIndustry: isPreset ? '' : demo.industry, url: demo.url, label: demo.label });
   };
 

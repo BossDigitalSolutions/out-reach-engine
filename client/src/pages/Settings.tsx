@@ -13,9 +13,17 @@ import {
   RefreshCw,
   BarChart2,
   MessageCircle,
+  Shield,
+  Smartphone,
+  Monitor,
+  Trash2,
+  Lock,
+  LogIn,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { settingsApi } from '../lib/api';
+import { QRCodeSVG } from 'qrcode.react';
+import { settingsApi, twoFactorApi, sessionsApi } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const INDUSTRY_LIST = [
   { key: 'restaurants', label: 'Restaurants' },
@@ -49,44 +57,23 @@ interface Settings {
   ghlLocationId?: string;
 }
 
-interface ApiKeyField {
-  key: string;
-  label: string;
-  placeholder: string;
-  icon: string;
-  docs: string;
-}
-
-const API_KEY_FIELDS: ApiKeyField[] = [
-  {
-    key: 'googleApiKey',
-    label: 'Google Places API Key',
-    placeholder: 'AIza...',
-    icon: 'google',
-    docs: 'console.cloud.google.com',
-  },
-  {
-    key: 'anthropicApiKey',
-    label: 'Anthropic (Claude) API Key',
-    placeholder: 'sk-ant-...',
-    icon: 'anthropic',
-    docs: 'console.anthropic.com',
-  },
-  {
-    key: 'sendgridApiKey',
-    label: 'SendGrid API Key',
-    placeholder: 'SG...',
-    icon: 'sendgrid',
-    docs: 'app.sendgrid.com',
-  },
+const API_KEY_FIELDS = [
+  { key: 'googleApiKey', label: 'Google Places API Key', placeholder: 'AIza...' },
+  { key: 'anthropicApiKey', label: 'Anthropic (Claude) API Key', placeholder: 'sk-ant-...' },
+  { key: 'sendgridApiKey', label: 'SendGrid API Key', placeholder: 'SG...' },
 ];
 
 export default function Settings() {
   const qc = useQueryClient();
+  const { user, isAdmin, refreshUser } = useAuth();
+
+  // API key & integration state (admin only)
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [whatsAppPhoneId, setWhatsAppPhoneId] = useState('');
   const [ghlLocationId, setGhlLocationId] = useState('');
+
+  // General settings state
   const [form, setForm] = useState({
     senderName: '',
     senderEmail: '',
@@ -103,9 +90,22 @@ export default function Settings() {
     Object.fromEntries(INDUSTRY_LIST.map((i) => [i.key, 20]))
   );
 
+  // 2FA state
+  const [showSetup2FA, setShowSetup2FA] = useState(false);
+  const [totpData, setTotpData] = useState<{ secret: string; otpauthUrl: string } | null>(null);
+  const [verifyCode, setVerifyCode] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [disableCode, setDisableCode] = useState('');
+  const [showDisable, setShowDisable] = useState(false);
+
   const { data: settings, isLoading } = useQuery<Settings>({
     queryKey: ['settings'],
     queryFn: () => settingsApi.get().then((r) => r.data),
+  });
+
+  const { data: sessions = [] } = useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => sessionsApi.list().then((r) => r.data),
   });
 
   useEffect(() => {
@@ -145,13 +145,82 @@ export default function Settings() {
     },
   });
 
+  const setup2FAMutation = useMutation({
+    mutationFn: () => twoFactorApi.setup(),
+    onSuccess: (res) => setTotpData(res.data),
+    onError: () => toast.error('Failed to start 2FA setup'),
+  });
+
+  const verify2FAMutation = useMutation({
+    mutationFn: () => twoFactorApi.verify(verifyCode),
+    onSuccess: (res) => {
+      setBackupCodes(res.data.backupCodes);
+      setVerifyCode('');
+      refreshUser();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Invalid code';
+      toast.error(msg);
+    },
+  });
+
+  const disable2FAMutation = useMutation({
+    mutationFn: () => twoFactorApi.disable(disableCode),
+    onSuccess: () => {
+      toast.success('2FA disabled');
+      setShowDisable(false);
+      setDisableCode('');
+      setShowSetup2FA(false);
+      setTotpData(null);
+      setBackupCodes(null);
+      refreshUser();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Invalid code';
+      toast.error(msg);
+    },
+  });
+
+  const revokeSessionMutation = useMutation({
+    mutationFn: (id: string) => sessionsApi.revoke(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sessions'] });
+      toast.success('Session revoked');
+    },
+    onError: () => toast.error('Failed to revoke session'),
+  });
+
+  const revokeAllMutation = useMutation({
+    mutationFn: () => sessionsApi.revokeAll(false),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sessions'] });
+      toast.success('Other sessions revoked');
+    },
+    onError: () => toast.error('Failed to revoke sessions'),
+  });
+
   const handleSave = () => {
-    const payload: Record<string, unknown> = { ...form, industryWeights };
-    if (whatsAppPhoneId.trim()) payload.whatsAppPhoneId = whatsAppPhoneId.trim();
-    if (ghlLocationId.trim()) payload.ghlLocationId = ghlLocationId.trim();
-    // Only include API keys if user entered new values
-    for (const [key, value] of Object.entries(apiKeys)) {
-      if (value.trim()) payload[key] = value.trim();
+    const payload: Record<string, unknown> = { industryWeights };
+    // All users can update non-admin fields
+    Object.assign(payload, {
+      senderName: form.senderName,
+      emailSignature: form.emailSignature,
+      dailySendLimit: form.dailySendLimit,
+      unsubscribeUrl: form.unsubscribeUrl,
+      warmupMode: form.warmupMode,
+      followupsEnabled: form.followupsEnabled,
+      followupInterval1: form.followupInterval1,
+      followupInterval2: form.followupInterval2,
+      followupInterval3: form.followupInterval3,
+    });
+    // Admin-only fields
+    if (isAdmin) {
+      if (form.senderEmail) payload.senderEmail = form.senderEmail;
+      if (whatsAppPhoneId.trim()) payload.whatsAppPhoneId = whatsAppPhoneId.trim();
+      if (ghlLocationId.trim()) payload.ghlLocationId = ghlLocationId.trim();
+      for (const [key, value] of Object.entries(apiKeys)) {
+        if (value.trim()) payload[key] = value.trim();
+      }
     }
     updateMutation.mutate(payload);
   };
@@ -170,58 +239,77 @@ export default function Settings() {
     <div className="p-6 space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-slate-100">Settings</h1>
-        <p className="text-slate-400 text-sm mt-1">Configure your API keys and email settings</p>
+        <p className="text-slate-400 text-sm mt-1">Configure your account and preferences</p>
       </div>
 
-      {/* API Keys */}
-      <div className="card space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <Key size={18} className="text-blue-400" />
-          <h2 className="text-base font-semibold text-slate-100">API Keys</h2>
+      {/* Last Login Info */}
+      {user?.lastLoginAt && (
+        <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-800/50 rounded-lg px-3 py-2">
+          <LogIn size={13} className="text-slate-600" />
+          Last login: {new Date(user.lastLoginAt).toLocaleString()}
+          {user.lastLoginIp && ` from ${user.lastLoginIp}`}
         </div>
-        <p className="text-xs text-slate-500">
-          Keys are stored securely and never exposed in the UI. Enter a new value to update.
-        </p>
+      )}
 
-        {API_KEY_FIELDS.map(({ key, label, placeholder }) => {
-          const isSet = settings?.[`has${key.charAt(0).toUpperCase() + key.slice(1)}` as keyof Settings] as boolean;
-          return (
-            <div key={key}>
-              <div className="flex items-center justify-between mb-1">
-                <label className="label mb-0">{label}</label>
-                {isSet ? (
-                  <div className="flex items-center gap-1 text-xs text-green-400">
-                    <CheckCircle size={12} />
-                    Configured
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 text-xs text-slate-500">
-                    <XCircle size={12} />
-                    Not set
-                  </div>
-                )}
+      {/* Non-admin notice for API sections */}
+      {!isAdmin && (
+        <div className="flex items-center gap-2 text-sm text-amber-300 bg-amber-900/20 border border-amber-800/30 rounded-lg px-4 py-3">
+          <Shield size={16} className="flex-shrink-0" />
+          API keys, sender email, and integrations are managed by the admin.
+        </div>
+      )}
+
+      {/* API Keys — admin only */}
+      {isAdmin && (
+        <div className="card space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Key size={18} className="text-blue-400" />
+            <h2 className="text-base font-semibold text-slate-100">API Keys</h2>
+            <span className="text-xs bg-amber-900/30 text-amber-400 px-1.5 py-0.5 rounded ml-1">Admin only</span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Keys are encrypted in the database and never exposed in the UI. Enter a new value to update.
+          </p>
+
+          {API_KEY_FIELDS.map(({ key, label, placeholder }) => {
+            const hasKey = `has${key.charAt(0).toUpperCase() + key.slice(1)}`;
+            const isSet = settings?.[hasKey as keyof Settings] as boolean;
+            return (
+              <div key={key}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="label mb-0">{label}</label>
+                  {isSet ? (
+                    <div className="flex items-center gap-1 text-xs text-green-400">
+                      <CheckCircle size={12} /> Configured
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-xs text-slate-500">
+                      <XCircle size={12} /> Not set
+                    </div>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type={showKeys[key] ? 'text' : 'password'}
+                    className="input pr-10"
+                    placeholder={isSet ? '••••••••' : placeholder}
+                    value={apiKeys[key] || ''}
+                    onChange={(e) => setApiKeys((k) => ({ ...k, [key]: e.target.value }))}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                    onClick={() => setShowKeys((s) => ({ ...s, [key]: !s[key] }))}
+                  >
+                    {showKeys[key] ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
-              <div className="relative">
-                <input
-                  type={showKeys[key] ? 'text' : 'password'}
-                  className="input pr-10"
-                  placeholder={isSet ? '••••••••' : placeholder}
-                  value={apiKeys[key] || ''}
-                  onChange={(e) => setApiKeys((k) => ({ ...k, [key]: e.target.value }))}
-                  autoComplete="off"
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                  onClick={() => setShowKeys((s) => ({ ...s, [key]: !s[key] }))}
-                >
-                  {showKeys[key] ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Sender Settings */}
       <div className="card space-y-4">
@@ -230,7 +318,7 @@ export default function Settings() {
           <h2 className="text-base font-semibold text-slate-100">Sender Settings</h2>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className={isAdmin ? 'grid grid-cols-2 gap-4' : ''}>
           <div>
             <label className="label">Sender Name</label>
             <input
@@ -241,16 +329,21 @@ export default function Settings() {
               onChange={(e) => setForm((f) => ({ ...f, senderName: e.target.value }))}
             />
           </div>
-          <div>
-            <label className="label">Sender Email</label>
-            <input
-              type="email"
-              className="input"
-              placeholder="you@yourdomain.com"
-              value={form.senderEmail}
-              onChange={(e) => setForm((f) => ({ ...f, senderEmail: e.target.value }))}
-            />
-          </div>
+          {isAdmin && (
+            <div>
+              <label className="label">
+                Sender Email
+                <span className="ml-1 text-xs text-amber-400">(admin only)</span>
+              </label>
+              <input
+                type="email"
+                className="input"
+                placeholder="you@bossdigitalsolutions.tech"
+                value={form.senderEmail}
+                onChange={(e) => setForm((f) => ({ ...f, senderEmail: e.target.value }))}
+              />
+            </div>
+          )}
         </div>
 
         <div>
@@ -262,21 +355,20 @@ export default function Settings() {
             value={form.emailSignature}
             onChange={(e) => setForm((f) => ({ ...f, emailSignature: e.target.value }))}
           />
-          <p className="text-xs text-slate-600 mt-1">
-            Appended to the bottom of every generated email
-          </p>
         </div>
 
-        <div>
-          <label className="label">Unsubscribe Page URL</label>
-          <input
-            type="url"
-            className="input"
-            placeholder="https://yoursite.com/unsubscribe (or leave blank to use built-in)"
-            value={form.unsubscribeUrl}
-            onChange={(e) => setForm((f) => ({ ...f, unsubscribeUrl: e.target.value }))}
-          />
-        </div>
+        {isAdmin && (
+          <div>
+            <label className="label">Unsubscribe Page URL</label>
+            <input
+              type="url"
+              className="input"
+              placeholder="https://yoursite.com/unsubscribe (or leave blank to use built-in)"
+              value={form.unsubscribeUrl}
+              onChange={(e) => setForm((f) => ({ ...f, unsubscribeUrl: e.target.value }))}
+            />
+          </div>
+        )}
       </div>
 
       {/* Send Limits */}
@@ -299,9 +391,6 @@ export default function Settings() {
             />
             <span className="text-sm text-slate-400">emails per day</span>
           </div>
-          <p className="text-xs text-slate-600 mt-1">
-            Emails are spread out over an 8-hour window to avoid spam flags
-          </p>
         </div>
 
         <div className="border-t border-slate-800 pt-4">
@@ -317,8 +406,7 @@ export default function Settings() {
                 )}
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Gradually increases send volume from 2/day to your limit. Helps build sender
-                reputation and avoid spam filters.
+                Gradually increases send volume to build sender reputation.
               </p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer ml-auto">
@@ -392,9 +480,6 @@ export default function Settings() {
           <BarChart2 size={18} className="text-blue-400" />
           <h2 className="text-base font-semibold text-slate-100">Lead Scoring — Industry Weights</h2>
         </div>
-        <p className="text-xs text-slate-500">
-          Boost lead scores for industries you prioritize (0 = no boost, 25 = max boost)
-        </p>
         <div className="space-y-3">
           {INDUSTRY_LIST.map(({ key, label }) => (
             <div key={key} className="flex items-center gap-3">
@@ -415,146 +500,108 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* GoHighLevel */}
-      <div className="card space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-4.5 h-4.5 rounded bg-orange-500 flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-xs leading-none">G</span>
-          </div>
-          <h2 className="text-base font-semibold text-slate-100">GoHighLevel</h2>
-          <span className="text-xs text-slate-500 ml-1">optional</span>
-          {settings?.hasGhlApiKey && (
-            <div className="flex items-center gap-1 text-xs text-green-400 ml-auto">
-              <CheckCircle size={12} />
-              Connected
+      {/* GoHighLevel — admin only */}
+      {isAdmin && (
+        <div className="card space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-4 h-4 rounded bg-orange-500 flex items-center justify-center">
+              <span className="text-white font-bold text-xs leading-none">G</span>
             </div>
-          )}
-        </div>
-        <p className="text-xs text-slate-500">
-          Push leads to your GHL account as contacts, then send WhatsApp messages, emails, and SMS
-          through GHL's platform — all conversations managed in one place.
-        </p>
-        <div className="bg-orange-900/10 border border-orange-800/30 rounded-lg px-3 py-2 text-xs text-orange-300 space-y-1">
-          <p className="font-medium">How to connect:</p>
-          <ol className="list-decimal list-inside space-y-0.5 text-orange-400/80">
-            <li>In GHL, go to Settings → API Keys → create a Location API Key</li>
-            <li>Copy the API Key and paste it below</li>
-            <li>Find your Location ID in Settings → Business Info (the ID in the URL)</li>
-            <li>Save — then use "Sync to GHL" on any lead</li>
-          </ol>
-        </div>
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="label mb-0">GHL API Key (Location key)</label>
-            {settings?.hasGhlApiKey ? (
-              <div className="flex items-center gap-1 text-xs text-green-400">
-                <CheckCircle size={12} />
-                Configured
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 text-xs text-slate-500">
-                <XCircle size={12} />
-                Not set
+            <h2 className="text-base font-semibold text-slate-100">GoHighLevel</h2>
+            <span className="text-xs text-amber-400 ml-1">(admin only)</span>
+            {settings?.hasGhlApiKey && (
+              <div className="flex items-center gap-1 text-xs text-green-400 ml-auto">
+                <CheckCircle size={12} /> Connected
               </div>
             )}
           </div>
-          <div className="relative">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="label mb-0">GHL API Key</label>
+              {settings?.hasGhlApiKey ? (
+                <span className="flex items-center gap-1 text-xs text-green-400"><CheckCircle size={12} /> Configured</span>
+              ) : (
+                <span className="flex items-center gap-1 text-xs text-slate-500"><XCircle size={12} /> Not set</span>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type={showKeys['ghlApiKey'] ? 'text' : 'password'}
+                className="input pr-10"
+                placeholder={settings?.hasGhlApiKey ? '••••••••' : 'eyJhbGci...'}
+                value={apiKeys['ghlApiKey'] || ''}
+                onChange={(e) => setApiKeys((k) => ({ ...k, ghlApiKey: e.target.value }))}
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                onClick={() => setShowKeys((s) => ({ ...s, ghlApiKey: !s['ghlApiKey'] }))}
+              >
+                {showKeys['ghlApiKey'] ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="label">Location ID</label>
             <input
-              type={showKeys['ghlApiKey'] ? 'text' : 'password'}
-              className="input pr-10"
-              placeholder={settings?.hasGhlApiKey ? '••••••••' : 'eyJhbGci...'}
-              value={apiKeys['ghlApiKey'] || ''}
-              onChange={(e) => setApiKeys((k) => ({ ...k, ghlApiKey: e.target.value }))}
-              autoComplete="off"
+              type="text"
+              className="input"
+              placeholder="e.g. ABCDEFGhijklm12345"
+              value={ghlLocationId}
+              onChange={(e) => setGhlLocationId(e.target.value)}
             />
-            <button
-              type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-              onClick={() => setShowKeys((s) => ({ ...s, ghlApiKey: !s['ghlApiKey'] }))}
-            >
-              {showKeys['ghlApiKey'] ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
           </div>
         </div>
-        <div>
-          <label className="label">Location ID</label>
-          <input
-            type="text"
-            className="input"
-            placeholder="e.g. ABCDEFGhijklm12345"
-            value={ghlLocationId}
-            onChange={(e) => setGhlLocationId(e.target.value)}
-          />
-          <p className="text-xs text-slate-600 mt-1">Found in GHL URL: app.gohighlevel.com/location/<strong>YOUR_ID</strong>/...</p>
-        </div>
-      </div>
+      )}
 
-      {/* WhatsApp */}
-      <div className="card space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <MessageCircle size={18} className="text-green-400" />
-          <h2 className="text-base font-semibold text-slate-100">WhatsApp Business API</h2>
-          <span className="text-xs text-slate-500 ml-1">optional</span>
-        </div>
-        <p className="text-xs text-slate-500">
-          Connect your Meta WhatsApp Business account to send messages directly from the app.
-          Without credentials, messages open in your WhatsApp app via a pre-filled link instead.
-        </p>
-        <div className="bg-green-900/10 border border-green-800/30 rounded-lg px-3 py-2 text-xs text-green-300 space-y-1">
-          <p className="font-medium">How to get your credentials:</p>
-          <ol className="list-decimal list-inside space-y-0.5 text-green-400/80">
-            <li>Create a Meta Business account at developers.facebook.com</li>
-            <li>Add a WhatsApp product to your app</li>
-            <li>Copy the Phone Number ID from the WhatsApp dashboard</li>
-            <li>Generate a permanent access token from a System User</li>
-          </ol>
-          <p className="text-green-400/60 mt-1">Note: Cold outreach via API requires Meta-approved message templates.</p>
-        </div>
-        <div>
-          <label className="label">Phone Number ID</label>
-          <input
-            type="text"
-            className="input"
-            placeholder="e.g. 123456789012345"
-            value={whatsAppPhoneId}
-            onChange={(e) => setWhatsAppPhoneId(e.target.value)}
-          />
-          <p className="text-xs text-slate-600 mt-1">Found in Meta for Developers → WhatsApp → API Setup</p>
-        </div>
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="label mb-0">Access Token</label>
-            {settings?.hasWhatsAppToken ? (
-              <div className="flex items-center gap-1 text-xs text-green-400">
-                <CheckCircle size={12} />
-                Configured
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 text-xs text-slate-500">
-                <XCircle size={12} />
-                Not set
-              </div>
-            )}
+      {/* WhatsApp — admin only */}
+      {isAdmin && (
+        <div className="card space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <MessageCircle size={18} className="text-green-400" />
+            <h2 className="text-base font-semibold text-slate-100">WhatsApp Business API</h2>
+            <span className="text-xs text-amber-400 ml-1">(admin only)</span>
           </div>
-          <div className="relative">
+          <div>
+            <label className="label">Phone Number ID</label>
             <input
-              type={showKeys['whatsAppToken'] ? 'text' : 'password'}
-              className="input pr-10"
-              placeholder={settings?.hasWhatsAppToken ? '••••••••' : 'EAAxxxxxxx...'}
-              value={apiKeys['whatsAppToken'] || ''}
-              onChange={(e) => setApiKeys((k) => ({ ...k, whatsAppToken: e.target.value }))}
-              autoComplete="off"
+              type="text"
+              className="input"
+              placeholder="e.g. 123456789012345"
+              value={whatsAppPhoneId}
+              onChange={(e) => setWhatsAppPhoneId(e.target.value)}
             />
-            <button
-              type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-              onClick={() => setShowKeys((s) => ({ ...s, whatsAppToken: !s['whatsAppToken'] }))}
-            >
-              {showKeys['whatsAppToken'] ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="label mb-0">Access Token</label>
+              {settings?.hasWhatsAppToken ? (
+                <span className="flex items-center gap-1 text-xs text-green-400"><CheckCircle size={12} /> Configured</span>
+              ) : (
+                <span className="flex items-center gap-1 text-xs text-slate-500"><XCircle size={12} /> Not set</span>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type={showKeys['whatsAppToken'] ? 'text' : 'password'}
+                className="input pr-10"
+                placeholder={settings?.hasWhatsAppToken ? '••••••••' : 'EAAxxxxxxx...'}
+                value={apiKeys['whatsAppToken'] || ''}
+                onChange={(e) => setApiKeys((k) => ({ ...k, whatsAppToken: e.target.value }))}
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                onClick={() => setShowKeys((s) => ({ ...s, whatsAppToken: !s['whatsAppToken'] }))}
+              >
+                {showKeys['whatsAppToken'] ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <button
         className="btn-primary flex items-center gap-2 px-6"
@@ -573,6 +620,180 @@ export default function Settings() {
           </>
         )}
       </button>
+
+      {/* Two-Factor Authentication */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2">
+          <Smartphone size={18} className="text-blue-400" />
+          <h2 className="text-base font-semibold text-slate-100">Two-Factor Authentication</h2>
+          {user?.twoFactorEnabled && (
+            <span className="text-xs bg-green-900/30 text-green-400 px-2 py-0.5 rounded ml-auto">Enabled</span>
+          )}
+        </div>
+
+        {!user?.twoFactorEnabled ? (
+          <>
+            <p className="text-xs text-slate-500">
+              Add an extra layer of security. You'll need your authenticator app at every login.
+            </p>
+            {!showSetup2FA ? (
+              <button
+                className="btn-primary flex items-center gap-2"
+                onClick={() => {
+                  setShowSetup2FA(true);
+                  setup2FAMutation.mutate();
+                }}
+              >
+                <Shield size={15} />
+                Enable 2FA
+              </button>
+            ) : (
+              <div className="space-y-4">
+                {setup2FAMutation.isPending && (
+                  <p className="text-sm text-slate-400">Generating...</p>
+                )}
+                {totpData && !backupCodes && (
+                  <>
+                    <p className="text-sm text-slate-300">
+                      Scan this QR code with Google Authenticator, Authy, or any TOTP app:
+                    </p>
+                    <div className="flex justify-center p-4 bg-white rounded-lg w-fit">
+                      <QRCodeSVG value={totpData.otpauthUrl} size={180} />
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Or enter manually: <code className="text-blue-400 break-all">{totpData.secret}</code>
+                    </p>
+                    <div>
+                      <label className="label">Enter the 6-digit code from your app</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          className="input w-36 tracking-widest font-mono text-center"
+                          placeholder="000000"
+                          maxLength={6}
+                          value={verifyCode}
+                          onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
+                        />
+                        <button
+                          className="btn-primary"
+                          onClick={() => verify2FAMutation.mutate()}
+                          disabled={verifyCode.length !== 6 || verify2FAMutation.isPending}
+                        >
+                          {verify2FAMutation.isPending ? 'Verifying...' : 'Verify & Enable'}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+                {backupCodes && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-green-400">
+                      <CheckCircle size={16} />
+                      <span className="text-sm font-medium">2FA enabled!</span>
+                    </div>
+                    <div className="bg-slate-800 rounded-lg p-4">
+                      <p className="text-sm font-medium text-slate-200 mb-2">Save your backup codes</p>
+                      <p className="text-xs text-slate-500 mb-3">
+                        Store these somewhere safe. Each code can only be used once.
+                      </p>
+                      <div className="grid grid-cols-2 gap-1">
+                        {backupCodes.map((code, i) => (
+                          <code key={i} className="text-sm text-blue-300 font-mono">{code}</code>
+                        ))}
+                      </div>
+                    </div>
+                    <button className="btn-secondary" onClick={() => setBackupCodes(null)}>
+                      Done
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-slate-500">
+              2FA is active. You'll need your authenticator app at every login.
+            </p>
+            {!showDisable ? (
+              <button
+                className="btn-secondary flex items-center gap-2 text-red-400 hover:text-red-300"
+                onClick={() => setShowDisable(true)}
+              >
+                <Lock size={14} />
+                Disable 2FA
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-300">Enter your current TOTP or a backup code:</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="input w-40 font-mono"
+                    placeholder="Code"
+                    value={disableCode}
+                    onChange={(e) => setDisableCode(e.target.value)}
+                  />
+                  <button
+                    className="btn-primary bg-red-600 hover:bg-red-500"
+                    onClick={() => disable2FAMutation.mutate()}
+                    disabled={!disableCode || disable2FAMutation.isPending}
+                  >
+                    Disable
+                  </button>
+                  <button className="btn-secondary" onClick={() => { setShowDisable(false); setDisableCode(''); }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Active Sessions */}
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Monitor size={18} className="text-blue-400" />
+            <h2 className="text-base font-semibold text-slate-100">Active Sessions</h2>
+          </div>
+          {(sessions as unknown[]).length > 1 && (
+            <button
+              className="text-xs text-slate-400 hover:text-red-400"
+              onClick={() => {
+                if (confirm('Log out all other sessions?')) revokeAllMutation.mutate();
+              }}
+            >
+              Log out all others
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {(sessions as { id: string; ipAddress?: string; userAgent?: string; lastActiveAt: string; createdAt: string }[]).map((session) => (
+            <div key={session.id} className="flex items-center gap-3 p-3 bg-slate-800/40 rounded-lg">
+              <Monitor size={14} className="text-slate-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-slate-300 truncate">{session.userAgent || 'Unknown device'}</p>
+                <p className="text-xs text-slate-500">
+                  {session.ipAddress} · Last active {new Date(session.lastActiveAt).toLocaleString()}
+                </p>
+              </div>
+              <button
+                onClick={() => revokeSessionMutation.mutate(session.id)}
+                className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded"
+                title="Revoke session"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+          {(sessions as unknown[]).length === 0 && (
+            <p className="text-xs text-slate-500">No active sessions found</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
