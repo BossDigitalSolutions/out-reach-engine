@@ -92,39 +92,73 @@ export async function generateEmail(
     ? `\n\nUse this as a style/structure reference (adapt it, don't copy verbatim):\n${templateBody}`
     : '';
 
-  const prompt = `You are an expert cold email copywriter helping a web designer reach out to local businesses.
+  const industryLabel = lead.industry || 'local business';
 
-Write a highly personalised cold email to the following business pitching professional website design services.
+  const prompt = `You are an expert cold email copywriter. Generate a cold outreach email for a web design business reaching out to local businesses.
 
-Business Details:
-- Name: ${lead.businessName}
-- Industry: ${lead.industry || 'local business'}
+You MUST follow every rule below — no exceptions.
+
+---
+BUSINESS DETAILS:
+- Business name: ${lead.businessName}
+- Industry: ${industryLabel}
 - Location: ${locationContext || 'local area'}
 ${ownerContext ? `- ${ownerContext}` : ''}
 - ${websiteContext}
 ${ratingContext ? `- ${ratingContext}` : ''}
 ${servicesContext ? `- ${servicesContext}` : ''}
 ${aboutContext ? `- ${aboutContext}` : ''}
-${linkedInContext ? `- ${linkedInContext}` : ''}
-${demoLink ? `- Include this demo website link naturally in the email: ${demoLink}` : ''}
+${demoLink ? `- Demo link to include naturally in the email: ${demoLink}` : ''}
 
 Sender name: ${senderName}
 Tone: ${toneGuide[tone] || toneGuide.professional}
 ${templateContext}
+---
 
-Requirements:
-- Keep the email SHORT (under 200 words for the body)
-- DEEPLY personalise it — reference their specific services, location, or something unique about their business
-- If you know their services, mention 1-2 specifically to prove you visited their site ("I noticed you offer X and Y...")
-- If you know the owner's name, use it naturally (not as an opener, but within the body)
-- If they have no website, lead with that opportunity. If they have one, pitch an upgrade that would benefit their specific business.
-- Reference their location or reviews naturally if possible
-- The CTA should be to reply or book a quick call (no booking link — just ask them to reply)
-- Sound human — no corporate speak, no "I hope this email finds you well"
-- Do NOT start with "Hi [name]" or "Hello" — start with something that grabs attention immediately
-- The email should feel like it was written by someone who spent 5 minutes researching their business
-- Do NOT mention AI or that this email was generated
-- Do NOT be generic — every sentence should be specific to THIS business
+STRICT RULES — ALL MUST BE FOLLOWED:
+
+1. LENGTH: The email body must be NO MORE than 5–6 sentences total (excluding greeting and sign-off). Max 2 sentences per paragraph. Short. Every sentence must earn its place.
+
+2. INDUSTRY SOCIAL PROOF (MANDATORY): Include exactly ONE sentence like:
+   "We've recently helped other [INDUSTRY] businesses in the area build modern, high-converting websites..."
+   Replace [INDUSTRY] with "${industryLabel}" — be specific (e.g. "plumbing companies", "dental practices", "restaurants"). Never be generic.
+
+3. SEO BENEFIT (ONE sentence only): Mention that the website is built to rank higher on Google so more customers find them first. Frame it as a business result, not a technical feature.
+
+4. FREE CUSTOM DEMO OFFER (THE HOOK — mandatory CTA): Offer to build a FREE custom 1-page demo website built specifically for THEIR business — featuring their business name, their services, their information. This is NOT a generic template. Frame it as zero-risk: "I'll put together a free custom demo page featuring ${lead.businessName} so you can see exactly how it could look — no obligation, no cost."
+
+5. TWO REPLY OPTIONS: Close with: "Simply reply to this email or send me a quick message on WhatsApp at 076 051 8635 and I'll get it done for you."
+
+6. SUBJECT LINE: Short, curiosity-driven, personalised with the business name. Example: "Quick question about ${lead.businessName}'s website"
+
+7. NEVER use spam trigger words: "guaranteed", "act now", "limited time", "buy now", "100%", "free money"
+
+8. TONE: Like a confident, professional peer — not a salesperson. No corporate speak. No "I hope this email finds you well."
+
+9. GREETING: Start with "Hi [first name or business name]," — keep it natural.
+
+10. DO NOT mention AI or that this was generated.
+
+---
+
+EXAMPLE STRUCTURE TO FOLLOW:
+
+Subject: Quick question about [Business Name]'s website
+
+Hi [First Name],
+
+I came across [Business Name] and noticed there might be an opportunity to strengthen your online presence.
+
+We've recently helped other [industry] businesses in the area build modern, high-converting websites designed to rank higher on Google — so more customers find them first.
+
+I'd love to put together a free custom demo page featuring [Business Name] so you can see exactly how a premium online presence could look for your business. No obligation, no cost.
+
+Simply reply to this email or send me a quick message on WhatsApp at 076 051 8635 and I'll get it done for you.
+
+Looking forward to hearing from you,
+[Sender name]
+
+---
 
 Return ONLY valid JSON in this exact format (no markdown, no extra text):
 {"subject": "email subject line here", "body": "full email body here with \\n for line breaks"}`;
