@@ -26,10 +26,7 @@ export function startScheduler() {
 async function processScheduledEmails() {
   try {
     const settings = await prisma.settings.findMany({
-      where: {
-        sendgridApiKey: { not: null },
-        senderEmail: { not: null },
-      },
+      where: { sendgridApiKey: { not: null } },
     });
 
     for (const setting of settings) {
@@ -80,8 +77,8 @@ async function processScheduledEmails() {
           const messageId = await sendEmail(
             {
               to: email.lead.email,
-              from: setting.senderEmail!,
-              fromName: setting.senderName || 'OutreachEngine',
+              from: 'info@bossdigitalsolutions.tech',
+              fromName: setting.senderName || 'Boss Digital Solutions',
               subject: email.subject,
               body: email.body,
               unsubscribeToken: email.unsubscribeToken || undefined,

@@ -13,6 +13,7 @@ import {
   UserCog,
   ScrollText,
   Shield,
+  CalendarClock,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -22,6 +23,7 @@ const memberNavItems = [
   { to: '/leads', icon: Users, label: 'Leads' },
   { to: '/templates', icon: Mail, label: 'Email Templates' },
   { to: '/demos', icon: Link, label: 'Demo Links' },
+  { to: '/schedule', icon: CalendarClock, label: 'Scheduled Emails' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
 ];
 

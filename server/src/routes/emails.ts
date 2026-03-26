@@ -53,10 +53,14 @@ router.use(authenticate);
 // GET /api/emails
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { leadId, status, page = '1', limit = '50' } = req.query;
+    const { leadId, status, page = '1', limit = '50', sortBy } = req.query;
     const where: Record<string, unknown> = { userId: req.user!.userId };
     if (leadId) where.leadId = leadId;
     if (status) where.status = status;
+
+    const orderBy = sortBy === 'scheduledAt'
+      ? { scheduledAt: 'asc' as const }
+      : { createdAt: 'desc' as const };
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
     const [emails, total] = await Promise.all([
@@ -64,7 +68,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         where,
         skip,
         take: parseInt(limit as string),
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: { lead: { select: { businessName: true, email: true } } },
       }),
       prisma.email.count({ where }),
@@ -207,11 +211,12 @@ router.post('/:id/schedule', async (req: AuthRequest, res: Response) => {
 // POST /api/emails/schedule-batch
 router.post('/schedule-batch', async (req: AuthRequest, res: Response) => {
   try {
-    const { emailIds, startDate, sendPerDay } = z
+    const { emailIds, startDate, sendPerDay, minutesBetween } = z
       .object({
         emailIds: z.array(z.string()),
         startDate: z.string(),
         sendPerDay: z.number().min(1).max(200),
+        minutesBetween: z.number().min(0).max(60).optional().default(0),
       })
       .parse(req.body);
 
@@ -219,11 +224,17 @@ router.post('/schedule-batch', async (req: AuthRequest, res: Response) => {
     let scheduled = 0;
 
     for (let i = 0; i < emailIds.length; i++) {
-      const dayOffset = Math.floor(i / sendPerDay);
-      const hourOffset = (i % sendPerDay) * Math.floor((8 * 60) / sendPerDay); // Spread over 8 hours
       const sendDate = new Date(start);
-      sendDate.setDate(sendDate.getDate() + dayOffset);
-      sendDate.setMinutes(sendDate.getMinutes() + hourOffset);
+      if (minutesBetween > 0) {
+        // Fixed interval: email i fires at start + (i * minutesBetween) minutes
+        sendDate.setMinutes(sendDate.getMinutes() + i * minutesBetween);
+      } else {
+        // Original behaviour: spread over 8 hours per day
+        const dayOffset = Math.floor(i / sendPerDay);
+        const hourOffset = (i % sendPerDay) * Math.floor((8 * 60) / sendPerDay);
+        sendDate.setDate(sendDate.getDate() + dayOffset);
+        sendDate.setMinutes(sendDate.getMinutes() + hourOffset);
+      }
 
       const result = await prisma.email.updateMany({
         where: { id: emailIds[i], userId: req.user!.userId },
@@ -249,9 +260,9 @@ router.post('/:id/send-now', async (req: AuthRequest, res: Response) => {
     });
 
     const apiKey = decryptField(settings?.sendgridApiKey) || process.env.SENDGRID_API_KEY;
-    if (!apiKey || !settings?.senderEmail) {
+    if (!apiKey) {
       return res.status(400).json({
-        error: 'SendGrid API key and sender email are required. Configure them in Settings.',
+        error: 'SendGrid API key not configured. Add it in Settings.',
       });
     }
 
@@ -271,8 +282,8 @@ router.post('/:id/send-now', async (req: AuthRequest, res: Response) => {
     const messageId = await sendEmail(
       {
         to: email.lead.email,
-        from: settings.senderEmail,
-        fromName: settings.senderName || 'OutreachEngine',
+        from: 'info@bossdigitalsolutions.tech',
+        fromName: settings?.senderName || 'Boss Digital Solutions',
         subject: email.subject,
         body: email.body,
         unsubscribeToken: email.unsubscribeToken || undefined,

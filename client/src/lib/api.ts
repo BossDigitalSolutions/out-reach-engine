@@ -67,8 +67,8 @@ export const emailsApi = {
   update: (id: string, data: Record<string, unknown>) => api.put(`/emails/${id}`, data),
   schedule: (id: string, scheduledAt: string) =>
     api.post(`/emails/${id}/schedule`, { scheduledAt }),
-  scheduleBatch: (emailIds: string[], startDate: string, sendPerDay: number) =>
-    api.post('/emails/schedule-batch', { emailIds, startDate, sendPerDay }),
+  scheduleBatch: (emailIds: string[], startDate: string, sendPerDay: number, minutesBetween?: number) =>
+    api.post('/emails/schedule-batch', { emailIds, startDate, sendPerDay, minutesBetween }),
   sendNow: (id: string) => api.post(`/emails/${id}/send-now`),
   delete: (id: string) => api.delete(`/emails/${id}`),
 };

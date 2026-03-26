@@ -11,6 +11,7 @@ import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import Team from './pages/Team';
 import ActivityLog from './pages/ActivityLog';
+import Schedule from './pages/Schedule';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -60,6 +61,7 @@ function AppRoutes() {
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/templates" element={<EmailTemplates />} />
                 <Route path="/demos" element={<DemoLinks />} />
+                <Route path="/schedule" element={<Schedule />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route
                   path="/settings"

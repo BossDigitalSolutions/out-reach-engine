@@ -139,6 +139,7 @@ export default function Leads() {
   const [editingEmail, setEditingEmail] = useState<GeneratedEmail | null>(null);
   const [scheduleDate, setScheduleDate] = useState('');
   const [sendPerDay, setSendPerDay] = useState(30);
+  const [minutesBetween, setMinutesBetween] = useState(5);
   const [sortBy, setSortBy] = useState('createdAt');
   const [industryFilter, setIndustryFilter] = useState('');
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
@@ -231,7 +232,7 @@ export default function Leads() {
     mutationFn: () => {
       const emailIds = generatedEmails.map((e) => e.id);
       return emailsApi
-        .scheduleBatch(emailIds, scheduleDate || new Date().toISOString(), sendPerDay)
+        .scheduleBatch(emailIds, scheduleDate || new Date().toISOString(), sendPerDay, minutesBetween)
         .then((r) => r.data);
     },
     onSuccess: (data) => {
@@ -911,16 +912,38 @@ export default function Leads() {
                   />
                 </div>
                 <div>
-                  <label className="label text-xs">Emails per day</label>
+                  <label className="label text-xs">Minutes between emails</label>
                   <input
                     type="number"
-                    className="input text-xs w-24"
-                    min={1}
-                    max={200}
-                    value={sendPerDay}
-                    onChange={(e) => setSendPerDay(Number(e.target.value))}
+                    className="input text-xs w-28"
+                    min={0}
+                    max={60}
+                    value={minutesBetween}
+                    onChange={(e) => setMinutesBetween(Number(e.target.value))}
+                    title="Set to 0 to spread over the day instead"
                   />
                 </div>
+                {minutesBetween === 0 && (
+                  <div>
+                    <label className="label text-xs">Emails per day</label>
+                    <input
+                      type="number"
+                      className="input text-xs w-24"
+                      min={1}
+                      max={200}
+                      value={sendPerDay}
+                      onChange={(e) => setSendPerDay(Number(e.target.value))}
+                    />
+                  </div>
+                )}
+                {minutesBetween > 0 && scheduleDate && (
+                  <div className="text-xs text-slate-400 self-end pb-2">
+                    {generatedEmails.length} emails · last sends at{' '}
+                    {new Date(
+                      new Date(scheduleDate).getTime() + (generatedEmails.length - 1) * minutesBetween * 60000
+                    ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                )}
                 <button
                   className="btn-primary flex items-center gap-2"
                   onClick={() => scheduleMutation.mutate()}
