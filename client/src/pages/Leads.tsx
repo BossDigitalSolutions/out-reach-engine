@@ -454,22 +454,33 @@ export default function Leads() {
           <option value="true">Has website</option>
         </select>
 
-        {industries.length > 0 && (
-          <select
-            className="select"
+        <div className="relative">
+          <input
+            type="text"
+            list="industry-options"
+            className="input"
+            placeholder="Filter by industry..."
             value={industryFilter}
             onChange={(e) => {
               setIndustryFilter(e.target.value);
               setPage(1);
               setSelected(new Set());
             }}
-          >
-            <option value="">All industries</option>
+          />
+          <datalist id="industry-options">
             {industries.map((ind) => (
-              <option key={ind} value={ind}>{ind}</option>
+              <option key={ind} value={ind} />
             ))}
-          </select>
-        )}
+          </datalist>
+          {industryFilter && (
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+              onClick={() => { setIndustryFilter(''); setPage(1); setSelected(new Set()); }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
 
         <div className="flex items-center gap-1.5 text-sm text-slate-400">
           <ArrowUpDown size={14} />
