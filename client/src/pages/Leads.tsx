@@ -140,10 +140,17 @@ export default function Leads() {
   const [scheduleDate, setScheduleDate] = useState('');
   const [sendPerDay, setSendPerDay] = useState(30);
   const [sortBy, setSortBy] = useState('createdAt');
+  const [industryFilter, setIndustryFilter] = useState('');
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
   const [selectedDemoId, setSelectedDemoId] = useState('');
+
+  const { data: industriesData } = useQuery({
+    queryKey: ['lead-industries'],
+    queryFn: () => leadsApi.getIndustries().then((r) => r.data),
+  });
+  const industries: string[] = industriesData || [];
 
   const { data: demosData } = useQuery({
     queryKey: ['demos'],
@@ -152,7 +159,7 @@ export default function Leads() {
   const demos: { id: string; label: string; industry: string }[] = demosData || [];
 
   const { data, isLoading } = useQuery({
-    queryKey: ['leads', page, search, status, hasWebsite, sortBy],
+    queryKey: ['leads', page, search, status, hasWebsite, sortBy, industryFilter],
     queryFn: () =>
       leadsApi
         .list({
@@ -162,6 +169,7 @@ export default function Leads() {
           status: status !== 'ALL' ? status : undefined,
           hasWebsite: hasWebsite !== '' ? hasWebsite : undefined,
           sortBy,
+          industry: industryFilter || undefined,
         })
         .then((r) => r.data),
   });
@@ -445,6 +453,23 @@ export default function Leads() {
           <option value="false">No website</option>
           <option value="true">Has website</option>
         </select>
+
+        {industries.length > 0 && (
+          <select
+            className="select"
+            value={industryFilter}
+            onChange={(e) => {
+              setIndustryFilter(e.target.value);
+              setPage(1);
+              setSelected(new Set());
+            }}
+          >
+            <option value="">All industries</option>
+            {industries.map((ind) => (
+              <option key={ind} value={ind}>{ind}</option>
+            ))}
+          </select>
+        )}
 
         <div className="flex items-center gap-1.5 text-sm text-slate-400">
           <ArrowUpDown size={14} />

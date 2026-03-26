@@ -88,6 +88,22 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /api/leads/industries — distinct industry values for current user
+router.get('/industries', async (req: AuthRequest, res: Response) => {
+  try {
+    const rows = await prisma.lead.findMany({
+      where: { userId: req.user!.userId, industry: { not: null } },
+      select: { industry: true },
+      distinct: ['industry'],
+      orderBy: { industry: 'asc' },
+    });
+    const industries = rows.map((r) => r.industry).filter(Boolean) as string[];
+    res.json(industries);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch industries' });
+  }
+});
+
 // GET /api/leads/:id
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
