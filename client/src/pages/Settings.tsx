@@ -333,15 +333,15 @@ export default function Settings() {
             <div>
               <label className="label">
                 Sender Email
-                <span className="ml-1 text-xs text-amber-400">(admin only)</span>
+                <span className="ml-1 text-xs text-slate-500">(locked)</span>
               </label>
               <input
                 type="email"
-                className="input"
-                placeholder="you@bossdigitalsolutions.tech"
-                value={form.senderEmail}
-                onChange={(e) => setForm((f) => ({ ...f, senderEmail: e.target.value }))}
+                className="input opacity-60 cursor-not-allowed"
+                value="info@bossdigitalsolutions.tech"
+                readOnly
               />
+              <p className="text-xs text-slate-500 mt-1">All emails are sent from this verified address.</p>
             </div>
           )}
         </div>
