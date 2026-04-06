@@ -70,6 +70,8 @@ export const emailsApi = {
   scheduleBatch: (emailIds: string[], startDate: string, sendPerDay: number, minutesBetween?: number) =>
     api.post('/emails/schedule-batch', { emailIds, startDate, sendPerDay, minutesBetween }),
   sendNow: (id: string) => api.post(`/emails/${id}/send-now`),
+  testSend: (to: string, subject: string, body: string) =>
+    api.post('/emails/test-send', { to, subject, body }),
   delete: (id: string) => api.delete(`/emails/${id}`),
 };
 

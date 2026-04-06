@@ -22,7 +22,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
-import { settingsApi, twoFactorApi, sessionsApi } from '../lib/api';
+import { settingsApi, twoFactorApi, sessionsApi, emailsApi } from '../lib/api';
+import { Send } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const INDUSTRY_LIST = [
@@ -97,6 +98,10 @@ export default function Settings() {
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [disableCode, setDisableCode] = useState('');
   const [showDisable, setShowDisable] = useState(false);
+
+  // Test email state
+  const [testEmail, setTestEmail] = useState({ to: '', subject: '', body: '' });
+  const [sendingTest, setSendingTest] = useState(false);
 
   const { data: settings, isLoading } = useQuery<Settings>({
     queryKey: ['settings'],
@@ -369,6 +374,68 @@ export default function Settings() {
             />
           </div>
         )}
+      </div>
+
+      {/* Send Test Email */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Send size={18} className="text-green-400" />
+          <h2 className="text-base font-semibold text-slate-100">Send Test Email</h2>
+        </div>
+        <p className="text-xs text-slate-400">
+          Manually compose and send an email from info@bossdigitalsolutions.tech for testing.
+        </p>
+
+        <div>
+          <label className="label">To (recipient email)</label>
+          <input
+            type="email"
+            className="input"
+            placeholder="recipient@example.com"
+            value={testEmail.to}
+            onChange={(e) => setTestEmail((t) => ({ ...t, to: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="label">Subject</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="Test email subject"
+            value={testEmail.subject}
+            onChange={(e) => setTestEmail((t) => ({ ...t, subject: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="label">Body</label>
+          <textarea
+            className="input resize-none"
+            rows={6}
+            placeholder="Type your email body here..."
+            value={testEmail.body}
+            onChange={(e) => setTestEmail((t) => ({ ...t, body: e.target.value }))}
+          />
+        </div>
+        <button
+          className="btn btn-primary flex items-center gap-2"
+          disabled={sendingTest || !testEmail.to || !testEmail.subject || !testEmail.body}
+          onClick={async () => {
+            setSendingTest(true);
+            try {
+              await emailsApi.testSend(testEmail.to, testEmail.subject, testEmail.body);
+              toast.success('Test email sent!');
+              setTestEmail({ to: '', subject: '', body: '' });
+            } catch (err: unknown) {
+              const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to send';
+              toast.error(msg);
+            } finally {
+              setSendingTest(false);
+            }
+          }}
+        >
+          <Send size={16} />
+          {sendingTest ? 'Sending...' : 'Send Test Email'}
+        </button>
       </div>
 
       {/* Send Limits */}

@@ -252,6 +252,60 @@ router.post('/schedule-batch', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// POST /api/emails/test-send — manually compose and send a test email
+router.post('/test-send', async (req: AuthRequest, res: Response) => {
+  try {
+    const { to, subject, body } = z
+      .object({
+        to: z.string().email(),
+        subject: z.string().min(1),
+        body: z.string().min(1),
+      })
+      .parse(req.body);
+
+    const settings = await prisma.settings.findUnique({
+      where: { userId: req.user!.userId },
+    });
+
+    const apiKey = decryptField(settings?.sendgridApiKey) || process.env.SENDGRID_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({
+        error: 'SendGrid API key not configured. Add it in Settings.',
+      });
+    }
+
+    const messageId = await sendEmail(
+      {
+        to,
+        from: 'info@bossdigitalsolutions.tech',
+        fromName: settings?.senderName || 'Boss Digital Solutions',
+        subject,
+        body,
+        serverUrl: process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3001}`,
+      },
+      apiKey
+    );
+
+    await logActivity({
+      userId: req.user!.userId,
+      userEmail: req.user!.email,
+      action: 'EMAIL_SENT',
+      targetType: 'test',
+      targetId: '',
+      metadata: { subject, to, test: true },
+      req,
+    });
+
+    res.json({ message: 'Test email sent successfully', messageId });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.errors[0].message });
+    }
+    const message = err instanceof Error ? err.message : 'Failed to send test email';
+    res.status(500).json({ error: message });
+  }
+});
+
 // POST /api/emails/:id/send-now
 router.post('/:id/send-now', async (req: AuthRequest, res: Response) => {
   try {
