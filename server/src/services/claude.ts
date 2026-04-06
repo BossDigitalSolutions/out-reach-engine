@@ -180,10 +180,10 @@ Return ONLY valid JSON in this exact format (no markdown, no extra text):
 // ─── SMS Generation ──────────────────────────────────────────────────────────
 
 export async function generateSms(
-  options: { lead: LeadData; senderName?: string },
+  options: { lead: LeadData; senderName?: string; demoLink?: string | null },
   apiKey: string
 ): Promise<string> {
-  const { lead, senderName = 'Alistaire' } = options;
+  const { lead, senderName = 'Alistaire', demoLink } = options;
 
   const client = new Anthropic({ apiKey });
 
@@ -194,7 +194,7 @@ export async function generateSms(
 
   const prompt = `You are an expert SMS copywriter for a web design business reaching out to local businesses.
 
-Write a SHORT cold outreach SMS message. Follow every rule below — no exceptions.
+Write a cold outreach SMS message. Follow every rule below — no exceptions.
 
 ---
 BUSINESS DETAILS:
@@ -203,44 +203,52 @@ BUSINESS DETAILS:
 - Location: ${locationContext}
 ${ownerName ? `- Owner/contact: ${ownerName}` : ''}
 - ${lead.hasWebsite ? `Has a website at ${lead.websiteUrl || 'their domain'}` : 'No website found'}
+${demoLink ? `- Demo link to include: ${demoLink}` : ''}
 
 Sender name: ${senderName}
 ---
 
 STRICT SMS RULES:
 
-1. LENGTH: MAX 2-3 sentences. Under 300 characters total. SMS must be ultra-short.
+1. FORMAT: Write 4-5 short paragraphs, each separated by a blank line. Each paragraph is 1-2 sentences max. The message should feel spaced out and easy to read — NOT one dense block.
 
-2. GREETING: Start with "${greeting}," — natural and personal.
+2. GREETING: Start with "${greeting}," — natural and personal. First paragraph is the greeting + how you found them.
 
-3. INDUSTRY MENTION: Reference their specific industry ("${industryLabel}") — never be generic.
+3. INDUSTRY SOCIAL PROOF: Second paragraph mentions you've been helping other ${industryLabel} businesses ${locationContext} build modern websites that bring in more customers.
 
-4. THE OFFER: Mention you'd like to build a FREE custom demo website/page for ${lead.businessName} so they can see how a modern online presence would look. Zero cost, zero obligation.
+4. THE OFFER: Third paragraph offers to build a FREE custom demo website specifically for ${lead.businessName} — featuring their business name, services, and info. Not a generic template. Zero cost, zero obligation.${demoLink ? ` Include this demo link naturally: ${demoLink} — say something like "Here's an example of what I've done for a similar business: ${demoLink}"` : ''}
 
-5. CTA: End with "Interested? Just reply here" — keep it dead simple.
+5. CTA: Fourth paragraph — "If you're interested, just reply to this text or send me a WhatsApp at 076 051 8635 and I'll get it done for you."
 
-6. SIGN OFF: End with "- ${senderName}" on a new line.
+6. SIGN OFF: End with "- ${senderName}" on its own line.
 
-7. NO spam words ("guaranteed", "act now", "limited time"). NO links. NO hashtags. NO emojis.
+7. NO spam words ("guaranteed", "act now", "limited time"). NO hashtags. NO emojis.
 
-8. TONE: Like a quick text from a professional contact — confident, friendly, direct.
+8. TONE: Like a friendly professional reaching out — confident but not pushy.
 
-9. DO NOT mention AI, SEO, or technical details. Keep it conversational.
+9. DO NOT mention AI or technical jargon. Keep it conversational.
 
 ---
 
 EXAMPLE:
 
-${greeting}, I came across ${lead.businessName} and I've been helping ${industryLabel} businesses ${locationContext} upgrade their online presence. I'd love to build a free custom demo page for your business — no cost, no obligation. Interested? Just reply here.
+${greeting}, I came across ${lead.businessName} and noticed there might be an opportunity to strengthen your online presence.
+
+I've been helping other ${industryLabel} businesses ${locationContext} build modern websites that bring in more customers and look great on any device.${demoLink ? `\n\nHere's an example of what I put together for a similar business: ${demoLink}` : ''}
+
+I'd love to build a free custom demo page specifically for ${lead.businessName} — featuring your services and info so you can see exactly how it'd look. No cost, no obligation.
+
+If you're interested, just reply here or send me a WhatsApp at 076 051 8635 and I'll get it done for you.
+
 - ${senderName}
 
 ---
 
-Return ONLY the SMS message text. No JSON, no quotes, no markdown.`;
+Return ONLY the SMS message text. No JSON, no quotes, no markdown. Use actual line breaks between paragraphs.`;
 
   const message = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 256,
+    max_tokens: 512,
     messages: [{ role: 'user', content: prompt }],
   });
 

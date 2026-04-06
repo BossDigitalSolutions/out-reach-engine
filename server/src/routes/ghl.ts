@@ -198,8 +198,17 @@ router.post('/generate-sms', async (req: AuthRequest, res: Response) => {
     });
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
+    // Auto-match demo link by industry
+    const demoLinks = await prisma.demoLink.findMany({ where: { userId: req.user!.userId } });
+    const demoLink =
+      lead.customDemoLink ||
+      demoLinks.find(
+        (d) => lead.industry && d.industry.toLowerCase().includes(lead.industry.toLowerCase())
+      )?.url ||
+      null;
+
     const message = await generateSms(
-      { lead, senderName: settings?.senderName || 'Alistaire' },
+      { lead, senderName: settings?.senderName || 'Alistaire', demoLink },
       apiKey
     );
 
@@ -225,6 +234,9 @@ router.post('/generate-sms-bulk', async (req: AuthRequest, res: Response) => {
       where: { id: { in: leadIds }, userId: req.user!.userId },
     });
 
+    // Fetch demo links for auto-matching
+    const demoLinks = await prisma.demoLink.findMany({ where: { userId: req.user!.userId } });
+
     const results: Array<{ leadId: string; businessName: string; phone: string; message: string }> = [];
     const errors: Array<{ leadId: string; error: string }> = [];
 
@@ -234,8 +246,16 @@ router.post('/generate-sms-bulk', async (req: AuthRequest, res: Response) => {
         continue;
       }
       try {
+        // Auto-match demo link by industry
+        const demoLink =
+          lead.customDemoLink ||
+          demoLinks.find(
+            (d) => lead.industry && d.industry.toLowerCase().includes(lead.industry.toLowerCase())
+          )?.url ||
+          null;
+
         const message = await generateSms(
-          { lead, senderName: settings?.senderName || 'Alistaire' },
+          { lead, senderName: settings?.senderName || 'Alistaire', demoLink },
           apiKey
         );
         results.push({ leadId: lead.id, businessName: lead.businessName, phone: lead.phone, message });
