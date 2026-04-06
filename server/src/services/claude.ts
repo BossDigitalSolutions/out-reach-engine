@@ -210,23 +210,23 @@ Sender name: ${senderName}
 
 STRICT SMS RULES:
 
-1. FORMAT: Write 4-5 short paragraphs, each separated by a blank line. Each paragraph is 1-2 sentences max. The message should feel spaced out and easy to read — NOT one dense block.
+1. FORMAT: Write 3-4 short paragraphs, each separated by a blank line. Each paragraph is 1-2 sentences max. Keep it concise — every word must earn its place.
 
-2. GREETING: Start with "${greeting}," — natural and personal. First paragraph is the greeting + how you found them.
+2. GREETING: Start with "${greeting}," — natural and personal. First paragraph is the greeting + brief mention of their business.
 
-3. INDUSTRY SOCIAL PROOF: Second paragraph mentions you've been helping other ${industryLabel} businesses ${locationContext} build modern websites that bring in more customers.
+3. SOCIAL PROOF + OFFER (combine into one paragraph): Mention helping other ${industryLabel} businesses ${locationContext}, and offer a FREE custom demo page for ${lead.businessName}. No cost, no obligation.${demoLink ? ` Include demo link: ${demoLink}` : ''}
 
-4. THE OFFER: Third paragraph offers to build a FREE custom demo website specifically for ${lead.businessName} — featuring their business name, services, and info. Not a generic template. Zero cost, zero obligation.${demoLink ? ` Include this demo link naturally: ${demoLink} — say something like "Here's an example of what I've done for a similar business: ${demoLink}"` : ''}
+4. CTA: "Interested? Reply here or WhatsApp me at 076 051 8635."
 
-5. CTA: Fourth paragraph — "If you're interested, just reply to this text or send me a WhatsApp at 076 051 8635 and I'll get it done for you."
+5. FOOTER: Always end with exactly:
+- ${senderName}
+https://creative.bossdigitalsolutions.tech
 
-6. SIGN OFF: End with "- ${senderName}" on its own line.
+6. NO spam words ("guaranteed", "act now", "limited time"). NO hashtags. NO emojis.
 
-7. NO spam words ("guaranteed", "act now", "limited time"). NO hashtags. NO emojis.
+7. TONE: Friendly professional — confident but not pushy. Conversational.
 
-8. TONE: Like a friendly professional reaching out — confident but not pushy.
-
-9. DO NOT mention AI or technical jargon. Keep it conversational.
+8. DO NOT mention AI or technical jargon.
 
 ---
 
@@ -234,13 +234,12 @@ EXAMPLE:
 
 ${greeting}, I came across ${lead.businessName} and noticed there might be an opportunity to strengthen your online presence.
 
-I've been helping other ${industryLabel} businesses ${locationContext} build modern websites that bring in more customers and look great on any device.${demoLink ? `\n\nHere's an example of what I put together for a similar business: ${demoLink}` : ''}
+I've been helping other ${industryLabel} businesses ${locationContext} build modern websites that bring in more customers. I'd love to put together a free custom demo page for ${lead.businessName} so you can see exactly how it'd look — no cost, no obligation.${demoLink ? `\n\nHere's an example: ${demoLink}` : ''}
 
-I'd love to build a free custom demo page specifically for ${lead.businessName} — featuring your services and info so you can see exactly how it'd look. No cost, no obligation.
-
-If you're interested, just reply here or send me a WhatsApp at 076 051 8635 and I'll get it done for you.
+Interested? Just reply here or WhatsApp me at 076 051 8635.
 
 - ${senderName}
+https://creative.bossdigitalsolutions.tech
 
 ---
 
