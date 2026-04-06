@@ -270,21 +270,29 @@ router.post('/test-send', async (req: AuthRequest, res: Response) => {
     const apiKey = decryptField(settings?.sendgridApiKey) || process.env.SENDGRID_API_KEY;
     if (!apiKey) {
       return res.status(400).json({
-        error: 'SendGrid API key not configured. Add it in Settings.',
+        error: 'SendGrid API key not configured. Add it in Settings or set SENDGRID_API_KEY env var on Railway.',
       });
     }
 
-    const messageId = await sendEmail(
-      {
-        to,
-        from: 'info@bossdigitalsolutions.tech',
-        fromName: settings?.senderName || 'Boss Digital Solutions',
-        subject,
-        body,
-        serverUrl: process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3001}`,
-      },
-      apiKey
-    );
+    let messageId: string;
+    try {
+      messageId = await sendEmail(
+        {
+          to,
+          from: 'info@bossdigitalsolutions.tech',
+          fromName: settings?.senderName || 'Boss Digital Solutions',
+          subject,
+          body,
+          serverUrl: process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3001}`,
+        },
+        apiKey
+      );
+    } catch (sendErr: unknown) {
+      const sgErr = sendErr as { response?: { body?: { errors?: { message: string }[] } }; message?: string };
+      const detail = sgErr?.response?.body?.errors?.[0]?.message || sgErr?.message || 'Unknown SendGrid error';
+      console.error('SendGrid error:', JSON.stringify(sgErr?.response?.body || sgErr));
+      return res.status(502).json({ error: `SendGrid error: ${detail}` });
+    }
 
     await logActivity({
       userId: req.user!.userId,

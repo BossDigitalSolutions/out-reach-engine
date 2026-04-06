@@ -45,9 +45,12 @@ export function encryptField(value: string | null | undefined): string | null {
 
 export function decryptField(value: string | null | undefined): string | null {
   if (!value) return null;
+  // If it's not encrypted, return as-is (legacy plaintext)
+  if (!value.startsWith(ENC_PREFIX)) return value;
   try {
     return decrypt(value);
   } catch {
-    return value; // fallback to plaintext if decryption fails
+    // Decryption failed (wrong key?) — return null so env var fallback can kick in
+    return null;
   }
 }
