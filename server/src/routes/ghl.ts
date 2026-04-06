@@ -4,6 +4,7 @@ import { prisma } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { syncContactToGhl, sendGhlMessage, getGhlConversations } from '../services/ghl';
 import { decryptField } from '../services/encryption';
+import { generateSms } from '../services/claude';
 
 const router = Router();
 router.use(authenticate);
@@ -178,6 +179,34 @@ router.get('/conversations/:leadId', async (req: AuthRequest, res: Response) => 
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to fetch conversations';
     res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/ghl/generate-sms — AI-generate an SMS for a lead
+router.post('/generate-sms', async (req: AuthRequest, res: Response) => {
+  try {
+    const { leadId } = z.object({ leadId: z.string() }).parse(req.body);
+
+    const settings = await prisma.settings.findUnique({ where: { userId: req.user!.userId } });
+    const apiKey = decryptField(settings?.anthropicApiKey) || process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Anthropic API key not configured. Add it in Settings.' });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: { id: leadId, userId: req.user!.userId },
+    });
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    const message = await generateSms(
+      { lead, senderName: settings?.senderName || 'Alistaire' },
+      apiKey
+    );
+
+    res.json({ message });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to generate SMS';
+    res.status(500).json({ error: msg });
   }
 });
 

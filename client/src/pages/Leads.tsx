@@ -1397,6 +1397,21 @@ function SmsModal({
 }) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const res = await ghlApi.generateSms(lead.id);
+      setMessage((res.data as { message: string }).message);
+      toast.success('SMS generated!');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to generate SMS';
+      toast.error(msg);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!message.trim()) return;
@@ -1432,12 +1447,31 @@ function SmsModal({
         </div>
 
         <div className="p-4 space-y-3">
-          <p className="text-xs text-slate-500">
-            SMS is sent through GoHighLevel. Make sure GHL is configured in Settings.
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-500">
+              SMS is sent through GoHighLevel.
+            </p>
+            <button
+              className="flex items-center gap-1.5 text-xs font-medium text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+              onClick={handleGenerate}
+              disabled={generating}
+            >
+              {generating ? (
+                <>
+                  <span className="w-3 h-3 border-2 border-purple-300/30 border-t-purple-300 rounded-full animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={13} />
+                  AI Generate
+                </>
+              )}
+            </button>
+          </div>
           <textarea
             className="input resize-none w-full min-h-[120px]"
-            placeholder="Type your SMS message..."
+            placeholder="Type your SMS or click AI Generate..."
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             maxLength={1600}

@@ -176,3 +176,76 @@ Return ONLY valid JSON in this exact format (no markdown, no extra text):
   const parsed = JSON.parse(text) as { subject: string; body: string };
   return parsed;
 }
+
+// ─── SMS Generation ──────────────────────────────────────────────────────────
+
+export async function generateSms(
+  options: { lead: LeadData; senderName?: string },
+  apiKey: string
+): Promise<string> {
+  const { lead, senderName = 'Alistaire' } = options;
+
+  const client = new Anthropic({ apiKey });
+
+  const industryLabel = lead.industry || 'local business';
+  const ownerName = lead.ownerName || (lead.websiteData as WebsiteData | null)?.ownerName;
+  const greeting = ownerName ? `Hi ${ownerName.split(' ')[0]}` : `Hi there`;
+  const locationContext = lead.city ? `in ${lead.city}` : 'in your area';
+
+  const prompt = `You are an expert SMS copywriter for a web design business reaching out to local businesses.
+
+Write a SHORT cold outreach SMS message. Follow every rule below — no exceptions.
+
+---
+BUSINESS DETAILS:
+- Business name: ${lead.businessName}
+- Industry: ${industryLabel}
+- Location: ${locationContext}
+${ownerName ? `- Owner/contact: ${ownerName}` : ''}
+- ${lead.hasWebsite ? `Has a website at ${lead.websiteUrl || 'their domain'}` : 'No website found'}
+
+Sender name: ${senderName}
+---
+
+STRICT SMS RULES:
+
+1. LENGTH: MAX 2-3 sentences. Under 300 characters total. SMS must be ultra-short.
+
+2. GREETING: Start with "${greeting}," — natural and personal.
+
+3. INDUSTRY MENTION: Reference their specific industry ("${industryLabel}") — never be generic.
+
+4. THE OFFER: Mention you'd like to build a FREE custom demo website/page for ${lead.businessName} so they can see how a modern online presence would look. Zero cost, zero obligation.
+
+5. CTA: End with "Interested? Just reply here" — keep it dead simple.
+
+6. SIGN OFF: End with "- ${senderName}" on a new line.
+
+7. NO spam words ("guaranteed", "act now", "limited time"). NO links. NO hashtags. NO emojis.
+
+8. TONE: Like a quick text from a professional contact — confident, friendly, direct.
+
+9. DO NOT mention AI, SEO, or technical details. Keep it conversational.
+
+---
+
+EXAMPLE:
+
+${greeting}, I came across ${lead.businessName} and I've been helping ${industryLabel} businesses ${locationContext} upgrade their online presence. I'd love to build a free custom demo page for your business — no cost, no obligation. Interested? Just reply here.
+- ${senderName}
+
+---
+
+Return ONLY the SMS message text. No JSON, no quotes, no markdown.`;
+
+  const message = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 256,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const content = message.content[0];
+  if (content.type !== 'text') throw new Error('Unexpected response from Claude');
+
+  return content.text.trim();
+}
