@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { syncContactToGhl, sendGhlMessage, getGhlConversations } from '../services/ghl';
+import { decryptField } from '../services/encryption';
 
 const router = Router();
 router.use(authenticate);
@@ -10,7 +11,7 @@ router.use(authenticate);
 // Helper to get GHL credentials or return an error
 async function getGhlCredentials(userId: string): Promise<{ apiKey: string; locationId: string } | null> {
   const settings = await prisma.settings.findUnique({ where: { userId } });
-  const apiKey = settings?.ghlApiKey || process.env.GHL_API_KEY;
+  const apiKey = decryptField(settings?.ghlApiKey) || process.env.GHL_API_KEY;
   const locationId = settings?.ghlLocationId || process.env.GHL_LOCATION_ID;
   if (!apiKey || !locationId) return null;
   return { apiKey, locationId };

@@ -24,6 +24,7 @@ import {
   Linkedin,
   MessageCircle,
   ExternalLink,
+  Smartphone,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { leadsApi, emailsApi, whatsAppApi, ghlApi, demosApi } from '../lib/api';
@@ -145,6 +146,7 @@ export default function Leads() {
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
+  const [smsLead, setSmsLead] = useState<Lead | null>(null);
   const [selectedDemoId, setSelectedDemoId] = useState('');
 
   const { data: industriesData } = useQuery({
@@ -709,13 +711,22 @@ export default function Leads() {
                           {lead.followupsEnabled ? <Bell size={14} /> : <BellOff size={14} />}
                         </button>
                         {lead.phone && (
-                          <button
-                            onClick={() => setWhatsAppLead(lead)}
-                            className="p-1.5 text-slate-500 hover:text-green-400 hover:bg-slate-700 rounded transition-colors"
-                            title="Send WhatsApp message"
-                          >
-                            <MessageCircle size={14} />
-                          </button>
+                          <>
+                            <button
+                              onClick={() => setWhatsAppLead(lead)}
+                              className="p-1.5 text-slate-500 hover:text-green-400 hover:bg-slate-700 rounded transition-colors"
+                              title="Send WhatsApp message"
+                            >
+                              <MessageCircle size={14} />
+                            </button>
+                            <button
+                              onClick={() => setSmsLead(lead)}
+                              className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-slate-700 rounded transition-colors"
+                              title="Send SMS via GoHighLevel"
+                            >
+                              <Smartphone size={14} />
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={() => syncToGhl([lead.id])}
@@ -788,6 +799,18 @@ export default function Leads() {
           onSent={() => {
             qc.invalidateQueries({ queryKey: ['leads'] });
             setWhatsAppLead(null);
+          }}
+        />
+      )}
+
+      {/* SMS Modal */}
+      {smsLead && (
+        <SmsModal
+          lead={smsLead}
+          onClose={() => setSmsLead(null)}
+          onSent={() => {
+            qc.invalidateQueries({ queryKey: ['leads'] });
+            setSmsLead(null);
           }}
         />
       )}
@@ -1355,6 +1378,92 @@ function WhatsAppModal({
               )}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SMS Modal ───────────────────────────────────────────────────────────────
+
+function SmsModal({
+  lead,
+  onClose,
+  onSent,
+}: {
+  lead: Lead;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    if (!message.trim()) return;
+    setSending(true);
+    try {
+      await ghlApi.message(lead.id, message.trim(), 'SMS');
+      toast.success('SMS sent via GoHighLevel!');
+      onSent();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to send SMS';
+      toast.error(msg);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+          <div>
+            <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+              <Smartphone size={18} className="text-blue-400" />
+              Send SMS
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              To: {lead.businessName} ({lead.phone})
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-slate-500">
+            SMS is sent through GoHighLevel. Make sure GHL is configured in Settings.
+          </p>
+          <textarea
+            className="input resize-none w-full min-h-[120px]"
+            placeholder="Type your SMS message..."
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            maxLength={1600}
+          />
+          <p className="text-xs text-slate-500 text-right">{message.length} / 1600</p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-slate-800">
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary flex items-center gap-2"
+            onClick={handleSend}
+            disabled={sending || !message.trim()}
+          >
+            {sending ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send size={16} />
+                Send SMS
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

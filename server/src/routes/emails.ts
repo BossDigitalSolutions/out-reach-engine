@@ -7,6 +7,7 @@ import { generateEmail } from '../services/claude';
 import { sendEmail } from '../services/sendgrid';
 import { decryptField } from '../services/encryption';
 import { logActivity } from '../services/activityLogger';
+import { syncContactToGhl, sendGhlMessage } from '../services/ghl';
 
 const router = Router();
 
@@ -373,6 +374,41 @@ router.post('/:id/send-now', async (req: AuthRequest, res: Response) => {
       metadata: { subject: email.subject, to: email.lead.email },
       req,
     });
+
+    // Sync to GHL so the email shows in GoHighLevel conversation
+    try {
+      const ghlApiKey = decryptField(settings?.ghlApiKey) || process.env.GHL_API_KEY;
+      const ghlLocationId = settings?.ghlLocationId || process.env.GHL_LOCATION_ID;
+      if (ghlApiKey && ghlLocationId) {
+        let ghlContactId = email.lead.ghlContactId;
+        if (!ghlContactId) {
+          ghlContactId = await syncContactToGhl(
+            {
+              businessName: email.lead.businessName,
+              ownerName: email.lead.ownerName,
+              email: email.lead.email,
+              phone: email.lead.phone,
+              address: email.lead.address,
+              city: email.lead.city,
+              state: email.lead.state,
+              industry: email.lead.industry,
+              websiteUrl: email.lead.websiteUrl,
+              googleRating: email.lead.googleRating,
+              description: email.lead.description,
+            },
+            ghlApiKey,
+            ghlLocationId
+          );
+          await prisma.lead.update({
+            where: { id: email.leadId },
+            data: { ghlContactId },
+          });
+        }
+        await sendGhlMessage(ghlContactId, email.body, 'Email', ghlApiKey, ghlLocationId, email.subject);
+      }
+    } catch (ghlErr) {
+      console.error('GHL sync failed (non-blocking):', ghlErr instanceof Error ? ghlErr.message : ghlErr);
+    }
 
     res.json({ message: 'Email sent successfully' });
   } catch (err) {
