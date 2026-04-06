@@ -56,6 +56,7 @@ interface Settings {
   whatsAppPhoneId?: string;
   hasGhlApiKey: boolean;
   ghlLocationId?: string;
+  ghlPhoneNumber?: string;
 }
 
 const API_KEY_FIELDS = [
@@ -133,7 +134,7 @@ export default function Settings() {
       }
       if (settings.whatsAppPhoneId) setWhatsAppPhoneId(settings.whatsAppPhoneId);
       if (settings.ghlLocationId) setGhlLocationId(settings.ghlLocationId);
-      if ((settings as Record<string, unknown>).ghlPhoneNumber) setGhlPhoneNumber((settings as Record<string, unknown>).ghlPhoneNumber as string);
+      if (settings.ghlPhoneNumber) setGhlPhoneNumber(settings.ghlPhoneNumber);
     }
   }, [settings]);
 
