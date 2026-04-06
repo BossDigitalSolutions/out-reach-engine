@@ -90,6 +90,7 @@ model Settings {
   whatsAppToken     String?
   ghlApiKey         String?
   ghlLocationId     String?
+  ghlPhoneNumber    String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

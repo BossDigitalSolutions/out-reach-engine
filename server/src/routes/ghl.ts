@@ -182,7 +182,7 @@ router.get('/conversations/:leadId', async (req: AuthRequest, res: Response) => 
   }
 });
 
-// POST /api/ghl/generate-sms — AI-generate an SMS for a lead
+// POST /api/ghl/generate-sms — AI-generate an SMS for a single lead
 router.post('/generate-sms', async (req: AuthRequest, res: Response) => {
   try {
     const { leadId } = z.object({ leadId: z.string() }).parse(req.body);
@@ -207,6 +207,108 @@ router.post('/generate-sms', async (req: AuthRequest, res: Response) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to generate SMS';
     res.status(500).json({ error: msg });
+  }
+});
+
+// POST /api/ghl/generate-sms-bulk — AI-generate SMS for multiple leads
+router.post('/generate-sms-bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    const { leadIds } = z.object({ leadIds: z.array(z.string()).min(1) }).parse(req.body);
+
+    const settings = await prisma.settings.findUnique({ where: { userId: req.user!.userId } });
+    const apiKey = decryptField(settings?.anthropicApiKey) || process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Anthropic API key not configured. Add it in Settings.' });
+    }
+
+    const leads = await prisma.lead.findMany({
+      where: { id: { in: leadIds }, userId: req.user!.userId },
+    });
+
+    const results: Array<{ leadId: string; businessName: string; phone: string; message: string }> = [];
+    const errors: Array<{ leadId: string; error: string }> = [];
+
+    for (const lead of leads) {
+      if (!lead.phone) {
+        errors.push({ leadId: lead.id, error: 'No phone number' });
+        continue;
+      }
+      try {
+        const message = await generateSms(
+          { lead, senderName: settings?.senderName || 'Alistaire' },
+          apiKey
+        );
+        results.push({ leadId: lead.id, businessName: lead.businessName, phone: lead.phone, message });
+      } catch (err) {
+        errors.push({ leadId: lead.id, error: err instanceof Error ? err.message : 'Generation failed' });
+      }
+    }
+
+    res.json({ generated: results, errors });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.errors[0].message });
+    }
+    res.status(500).json({ error: 'Failed to generate SMS messages' });
+  }
+});
+
+// POST /api/ghl/send-sms-bulk — send multiple SMS via GHL
+router.post('/send-sms-bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    const { messages } = z.object({
+      messages: z.array(z.object({
+        leadId: z.string(),
+        message: z.string().min(1),
+      })),
+    }).parse(req.body);
+
+    const creds = await getGhlCredentials(req.user!.userId);
+    if (!creds) {
+      return res.status(400).json({ error: 'GoHighLevel not configured. Add API key and Location ID in Settings.' });
+    }
+
+    let sent = 0;
+    const errors: Array<{ leadId: string; error: string }> = [];
+
+    for (const { leadId, message } of messages) {
+      try {
+        const lead = await prisma.lead.findFirst({
+          where: { id: leadId, userId: req.user!.userId },
+        });
+        if (!lead) { errors.push({ leadId, error: 'Lead not found' }); continue; }
+        if (!lead.phone) { errors.push({ leadId, error: 'No phone number' }); continue; }
+
+        // Auto-sync to GHL if needed
+        let ghlContactId = lead.ghlContactId;
+        if (!ghlContactId) {
+          ghlContactId = await syncContactToGhl(
+            {
+              businessName: lead.businessName, ownerName: lead.ownerName,
+              email: lead.email, phone: lead.phone, address: lead.address,
+              city: lead.city, state: lead.state, industry: lead.industry,
+              websiteUrl: lead.websiteUrl, googleRating: lead.googleRating,
+              description: lead.description,
+            },
+            creds.apiKey, creds.locationId
+          );
+          await prisma.lead.update({ where: { id: lead.id }, data: { ghlContactId } });
+        }
+
+        await sendGhlMessage(ghlContactId, message, 'SMS', creds.apiKey, creds.locationId);
+        await prisma.lead.updateMany({ where: { id: lead.id, status: 'NEW' }, data: { status: 'CONTACTED' } });
+        sent++;
+      } catch (err) {
+        errors.push({ leadId, error: err instanceof Error ? err.message : 'Send failed' });
+      }
+    }
+
+    res.json({ sent, failed: errors.length, errors });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.errors[0].message });
+    }
+    res.status(500).json({ error: 'Failed to send SMS messages' });
   }
 });
 

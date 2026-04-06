@@ -73,6 +73,7 @@ export default function Settings() {
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [whatsAppPhoneId, setWhatsAppPhoneId] = useState('');
   const [ghlLocationId, setGhlLocationId] = useState('');
+  const [ghlPhoneNumber, setGhlPhoneNumber] = useState('');
 
   // General settings state
   const [form, setForm] = useState({
@@ -132,6 +133,7 @@ export default function Settings() {
       }
       if (settings.whatsAppPhoneId) setWhatsAppPhoneId(settings.whatsAppPhoneId);
       if (settings.ghlLocationId) setGhlLocationId(settings.ghlLocationId);
+      if ((settings as Record<string, unknown>).ghlPhoneNumber) setGhlPhoneNumber((settings as Record<string, unknown>).ghlPhoneNumber as string);
     }
   }, [settings]);
 
@@ -223,6 +225,7 @@ export default function Settings() {
       if (form.senderEmail) payload.senderEmail = form.senderEmail;
       if (whatsAppPhoneId.trim()) payload.whatsAppPhoneId = whatsAppPhoneId.trim();
       if (ghlLocationId.trim()) payload.ghlLocationId = ghlLocationId.trim();
+      if (ghlPhoneNumber.trim()) payload.ghlPhoneNumber = ghlPhoneNumber.trim();
       for (const [key, value] of Object.entries(apiKeys)) {
         if (value.trim()) payload[key] = value.trim();
       }
@@ -618,6 +621,17 @@ export default function Settings() {
               value={ghlLocationId}
               onChange={(e) => setGhlLocationId(e.target.value)}
             />
+          </div>
+          <div>
+            <label className="label">SMS Phone Number</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="e.g. +27760518635"
+              value={ghlPhoneNumber}
+              onChange={(e) => setGhlPhoneNumber(e.target.value)}
+            />
+            <p className="text-xs text-slate-500 mt-1">The phone number purchased from GHL that SMS will be sent from.</p>
           </div>
         </div>
       )}

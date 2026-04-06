@@ -119,6 +119,9 @@ export const ghlApi = {
   conversations: (leadId: string) => api.get(`/ghl/conversations/${leadId}`),
   status: () => api.get('/ghl/status'),
   generateSms: (leadId: string) => api.post('/ghl/generate-sms', { leadId }),
+  generateSmsBulk: (leadIds: string[]) => api.post('/ghl/generate-sms-bulk', { leadIds }),
+  sendSmsBulk: (messages: Array<{ leadId: string; message: string }>) =>
+    api.post('/ghl/send-sms-bulk', { messages }),
 };
 
 // WhatsApp

@@ -18,6 +18,7 @@ const ADMIN_ONLY_FIELDS = [
   'whatsAppToken',
   'ghlApiKey',
   'ghlLocationId',
+  'ghlPhoneNumber',
 ];
 
 const settingsSchema = z.object({
@@ -29,6 +30,7 @@ const settingsSchema = z.object({
   whatsAppToken: z.string().optional(),
   ghlApiKey: z.string().optional(),
   ghlLocationId: z.string().optional(),
+  ghlPhoneNumber: z.string().optional(),
   senderEmail: z.string().email().optional().or(z.literal('')),
   // All users
   senderName: z.string().optional(),

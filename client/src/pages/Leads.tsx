@@ -147,6 +147,8 @@ export default function Leads() {
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
   const [smsLead, setSmsLead] = useState<Lead | null>(null);
+  const [showSmsModal, setShowSmsModal] = useState(false);
+  const [generatedSms, setGeneratedSms] = useState<Array<{ leadId: string; businessName: string; phone: string; message: string }>>([]);
   const [selectedDemoId, setSelectedDemoId] = useState('');
 
   const { data: industriesData } = useQuery({
@@ -221,6 +223,25 @@ export default function Leads() {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
         'Generation failed';
+      toast.error(msg);
+    },
+  });
+
+  const generateSmsMutation = useMutation({
+    mutationFn: () =>
+      ghlApi.generateSmsBulk(Array.from(selected)).then((r) => r.data),
+    onSuccess: (data: { generated: Array<{ leadId: string; businessName: string; phone: string; message: string }>; errors: Array<{ leadId: string; error: string }> }) => {
+      setGeneratedSms(data.generated);
+      setShowSmsModal(true);
+      if (data.errors.length > 0) {
+        toast.error(`${data.errors.length} lead(s) skipped (no phone or generation failed)`);
+      }
+      if (data.generated.length > 0) {
+        toast.success(`Generated ${data.generated.length} SMS message${data.generated.length !== 1 ? 's' : ''}`);
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'SMS generation failed';
       toast.error(msg);
     },
   });
@@ -383,6 +404,23 @@ export default function Leads() {
                   <>
                     <Mail size={16} />
                     Generate Emails ({selected.size})
+                  </>
+                )}
+              </button>
+              <button
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                onClick={() => generateSmsMutation.mutate()}
+                disabled={generateSmsMutation.isPending}
+              >
+                {generateSmsMutation.isPending ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Smartphone size={16} />
+                    Generate SMS ({selected.size})
                   </>
                 )}
               </button>
@@ -811,6 +849,21 @@ export default function Leads() {
           onSent={() => {
             qc.invalidateQueries({ queryKey: ['leads'] });
             setSmsLead(null);
+          }}
+        />
+      )}
+
+      {/* Bulk SMS Modal */}
+      {showSmsModal && (
+        <BulkSmsModal
+          messages={generatedSms}
+          onUpdate={setGeneratedSms}
+          onClose={() => { setShowSmsModal(false); setGeneratedSms([]); }}
+          onSent={() => {
+            setShowSmsModal(false);
+            setGeneratedSms([]);
+            setSelected(new Set());
+            qc.invalidateQueries({ queryKey: ['leads'] });
           }}
         />
       )}
@@ -1498,6 +1551,140 @@ function SmsModal({
               </>
             )}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bulk SMS Modal ──────────────────────────────────────────────────────────
+
+function BulkSmsModal({
+  messages,
+  onUpdate,
+  onClose,
+  onSent,
+}: {
+  messages: Array<{ leadId: string; businessName: string; phone: string; message: string }>;
+  onUpdate: (msgs: Array<{ leadId: string; businessName: string; phone: string; message: string }>) => void;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [sending, setSending] = useState(false);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+
+  const handleSendAll = async () => {
+    setSending(true);
+    try {
+      const payload = messages.map((m) => ({ leadId: m.leadId, message: m.message }));
+      const res = await ghlApi.sendSmsBulk(payload);
+      const data = res.data as { sent: number; failed: number };
+      if (data.failed > 0) {
+        toast.error(`${data.failed} SMS failed to send — check GHL config`);
+      }
+      if (data.sent > 0) {
+        toast.success(`${data.sent} SMS sent via GoHighLevel!`);
+      }
+      onSent();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to send SMS';
+      toast.error(msg);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+              <Smartphone size={20} className="text-blue-400" />
+              Generated SMS ({messages.length})
+            </h2>
+            <p className="text-sm text-slate-400">Review and edit before sending</p>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-200 rounded">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {messages.map((sms, i) => (
+            <div key={sms.leadId} className="bg-slate-800 rounded-lg p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-200">
+                    {i + 1}. {sms.businessName}
+                  </p>
+                  <p className="text-xs text-slate-500">{sms.phone}</p>
+                </div>
+              </div>
+              {editingIdx === i ? (
+                <div className="space-y-2">
+                  <textarea
+                    className="input resize-none w-full"
+                    rows={4}
+                    value={sms.message}
+                    onChange={(e) => {
+                      const updated = [...messages];
+                      updated[i] = { ...updated[i], message: e.target.value };
+                      onUpdate(updated);
+                    }}
+                    maxLength={1600}
+                  />
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-slate-500">{sms.message.length} / 1600</p>
+                    <button
+                      className="btn-primary text-xs"
+                      onClick={() => setEditingIdx(null)}
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-slate-900 rounded px-3 py-2">
+                    <p className="text-sm text-slate-300 whitespace-pre-line">{sms.message}</p>
+                  </div>
+                  <button
+                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                    onClick={() => setEditingIdx(i)}
+                  >
+                    <Edit2 size={12} /> Edit
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-slate-800 p-4 flex items-center justify-between">
+          <p className="text-xs text-slate-400">
+            {messages.length} SMS will be sent via GoHighLevel
+          </p>
+          <div className="flex items-center gap-2">
+            <button className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button
+              className="btn btn-primary flex items-center gap-2"
+              onClick={handleSendAll}
+              disabled={sending || messages.length === 0}
+            >
+              {sending ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send size={16} />
+                  Send All SMS
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>
