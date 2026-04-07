@@ -89,9 +89,11 @@ model Settings {
   industryWeights   Json?
   whatsAppPhoneId   String?
   whatsAppToken     String?
-  ghlApiKey         String?
-  ghlLocationId     String?
-  ghlPhoneNumber    String?
+  ghlApiKey          String?
+  ghlLocationId      String?
+  ghlPhoneNumber     String?
+  ghlPhoneNumberUS   String?
+  ghlPhoneNumberZA   String?
   smsWarmupStartDate DateTime?
   smsDailyLimit      Int     @default(50)
 
