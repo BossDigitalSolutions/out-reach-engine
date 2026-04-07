@@ -268,7 +268,8 @@ export default function Leads() {
       qc.invalidateQueries({ queryKey: ['leads'] });
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to start sequences';
+      const axiosErr = err as { response?: { data?: { error?: string }; status?: number }; message?: string };
+      const msg = axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to start sequences';
       toast.error(msg);
     },
   });

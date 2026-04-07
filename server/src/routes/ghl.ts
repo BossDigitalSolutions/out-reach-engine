@@ -442,8 +442,10 @@ router.post('/sms-sequence/start', async (req: AuthRequest, res: Response) => {
 
     res.json({ started: started.length, failed: errors.length, results: started, errors });
   } catch (err) {
+    console.error('SMS sequence start error:', err);
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0].message });
-    res.status(500).json({ error: 'Failed to start SMS sequences' });
+    const message = err instanceof Error ? err.message : 'Failed to start SMS sequences';
+    res.status(500).json({ error: message });
   }
 });
 
