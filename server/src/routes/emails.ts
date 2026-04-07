@@ -280,7 +280,7 @@ router.post('/test-send', async (req: AuthRequest, res: Response) => {
       messageId = await sendEmail(
         {
           to,
-          from: 'info@bossdigitalsolutions.tech',
+          from: 'info@ma.bossdigitalsolutions.tech',
           fromName: settings?.senderName || 'Boss Digital Solutions',
           subject,
           body,
@@ -345,7 +345,7 @@ router.post('/:id/send-now', async (req: AuthRequest, res: Response) => {
     const messageId = await sendEmail(
       {
         to: email.lead.email,
-        from: 'info@bossdigitalsolutions.tech',
+        from: 'info@ma.bossdigitalsolutions.tech',
         fromName: settings?.senderName || 'Boss Digital Solutions',
         subject: email.subject,
         body: email.body,
