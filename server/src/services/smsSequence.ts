@@ -521,7 +521,6 @@ export function validateLeadForSequence(lead: {
   city?: string | null;
 }): { valid: boolean; missing: string[] } {
   const missing: string[] = [];
-  if (!lead.ownerName) missing.push('ownerName (First Name)');
   if (!lead.phone) missing.push('phone');
   if (!lead.industry) missing.push('industry');
   if (!lead.city) missing.push('city');
