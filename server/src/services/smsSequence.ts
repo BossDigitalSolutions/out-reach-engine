@@ -2,108 +2,170 @@ import { prisma } from '../index';
 import { decryptField } from './encryption';
 import { syncContactToGhl, sendGhlMessage } from './ghl';
 
-// ─── Industry Classification ────────────────────────────────────────────────
+// ─── Country Classification ─────────────────────────────────────────────────
 
-type IndustryCategory = 'TRADES' | 'BEAUTY' | 'FOOD' | 'REAL_ESTATE' | 'MEDICAL' | 'DEFAULT';
+type Country = 'US' | 'UK' | 'AU' | 'NZ' | 'ZA' | 'DEFAULT';
 
-const INDUSTRY_MAP: Record<string, IndustryCategory> = {
-  plumber: 'TRADES', plumbing: 'TRADES', electrician: 'TRADES', electrical: 'TRADES',
-  hvac: 'TRADES', heating: 'TRADES', cooling: 'TRADES', roofer: 'TRADES', roofing: 'TRADES',
-  landscaper: 'TRADES', landscaping: 'TRADES', painter: 'TRADES', painting: 'TRADES',
-  contractor: 'TRADES', construction: 'TRADES', handyman: 'TRADES', locksmith: 'TRADES',
-  garage: 'TRADES', pest: 'TRADES', cleaning: 'TRADES', pressure: 'TRADES', solar: 'TRADES',
-  fencing: 'TRADES', flooring: 'TRADES', tiling: 'TRADES', carpentry: 'TRADES',
+// US states (50 + DC)
+const US_STATES = new Set([
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
+  'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT',
+  'VA','WA','WV','WI','WY','DC',
+  'ALABAMA','ALASKA','ARIZONA','ARKANSAS','CALIFORNIA','COLORADO','CONNECTICUT',
+  'DELAWARE','FLORIDA','GEORGIA','HAWAII','IDAHO','ILLINOIS','INDIANA','IOWA',
+  'KANSAS','KENTUCKY','LOUISIANA','MAINE','MARYLAND','MASSACHUSETTS','MICHIGAN',
+  'MINNESOTA','MISSISSIPPI','MISSOURI','MONTANA','NEBRASKA','NEVADA','NEW HAMPSHIRE',
+  'NEW JERSEY','NEW MEXICO','NEW YORK','NORTH CAROLINA','NORTH DAKOTA','OHIO',
+  'OKLAHOMA','OREGON','PENNSYLVANIA','RHODE ISLAND','SOUTH CAROLINA','SOUTH DAKOTA',
+  'TENNESSEE','TEXAS','UTAH','VERMONT','VIRGINIA','WASHINGTON','WEST VIRGINIA',
+  'WISCONSIN','WYOMING',
+]);
 
-  salon: 'BEAUTY', hair: 'BEAUTY', nails: 'BEAUTY', nail: 'BEAUTY', spa: 'BEAUTY',
-  tattoo: 'BEAUTY', lash: 'BEAUTY', aesthetician: 'BEAUTY', beauty: 'BEAUTY',
-  barber: 'BEAUTY', wax: 'BEAUTY', brow: 'BEAUTY', makeup: 'BEAUTY', cosmetic: 'BEAUTY',
-  skincare: 'BEAUTY', massage: 'BEAUTY',
+// UK regions / countries
+const UK_REGIONS = new Set([
+  'ENGLAND','SCOTLAND','WALES','NORTHERN IRELAND','UK','UNITED KINGDOM','GB',
+  'GREATER LONDON','LONDON','MANCHESTER','BIRMINGHAM','LEEDS','GLASGOW',
+  'LIVERPOOL','BRISTOL','SHEFFIELD','EDINBURGH','CARDIFF','BELFAST',
+]);
 
-  restaurant: 'FOOD', cafe: 'FOOD', café: 'FOOD', catering: 'FOOD', bakery: 'FOOD',
-  food: 'FOOD', pizza: 'FOOD', bar: 'FOOD', pub: 'FOOD', diner: 'FOOD',
-  coffee: 'FOOD', juice: 'FOOD', kitchen: 'FOOD',
+// Australian states
+const AU_STATES = new Set([
+  'NSW','VIC','QLD','WA','SA','TAS','ACT','NT',
+  'NEW SOUTH WALES','VICTORIA','QUEENSLAND','WESTERN AUSTRALIA',
+  'SOUTH AUSTRALIA','TASMANIA','AUSTRALIAN CAPITAL TERRITORY','NORTHERN TERRITORY',
+  'AUSTRALIA','AU',
+]);
 
-  'real estate': 'REAL_ESTATE', realtor: 'REAL_ESTATE', realty: 'REAL_ESTATE',
-  agent: 'REAL_ESTATE', property: 'REAL_ESTATE', estate: 'REAL_ESTATE',
+// New Zealand regions
+const NZ_REGIONS = new Set([
+  'NZ','NEW ZEALAND','AUCKLAND','WELLINGTON','CANTERBURY','OTAGO','WAIKATO',
+  'BAY OF PLENTY','MANAWATU','NORTHLAND','TARANAKI','HAWKES BAY','SOUTHLAND',
+  'NELSON','MARLBOROUGH','TASMAN','GISBORNE','WEST COAST',
+]);
 
-  dentist: 'MEDICAL', dental: 'MEDICAL', chiro: 'MEDICAL', chiropractic: 'MEDICAL',
-  physio: 'MEDICAL', physiotherapy: 'MEDICAL', doctor: 'MEDICAL', clinic: 'MEDICAL',
-  medical: 'MEDICAL', gp: 'MEDICAL', skin: 'MEDICAL', dermatology: 'MEDICAL',
-  optometrist: 'MEDICAL', veterinary: 'MEDICAL', vet: 'MEDICAL', pharmacy: 'MEDICAL',
-};
+// South African provinces (existing support)
+const ZA_REGIONS = new Set([
+  'WESTERN CAPE','GAUTENG','KWAZULU-NATAL','EASTERN CAPE','FREE STATE',
+  'LIMPOPO','MPUMALANGA','NORTH WEST','NORTHERN CAPE','ZA','SOUTH AFRICA',
+]);
 
-function classifyIndustry(industry?: string | null): IndustryCategory {
-  if (!industry) return 'DEFAULT';
-  const lower = industry.toLowerCase();
-  for (const [keyword, category] of Object.entries(INDUSTRY_MAP)) {
-    if (lower.includes(keyword)) return category;
-  }
+function classifyCountry(state?: string | null, address?: string | null): Country {
+  const s = (state || '').toUpperCase().trim();
+  const a = (address || '').toUpperCase();
+
+  if (US_STATES.has(s) || a.includes('USA') || a.includes('UNITED STATES')) return 'US';
+  if (UK_REGIONS.has(s) || a.includes('UNITED KINGDOM') || a.includes(', UK')) return 'UK';
+  if (AU_STATES.has(s) || a.includes('AUSTRALIA')) return 'AU';
+  if (NZ_REGIONS.has(s) || a.includes('NEW ZEALAND')) return 'NZ';
+  if (ZA_REGIONS.has(s) || a.includes('SOUTH AFRICA')) return 'ZA';
   return 'DEFAULT';
 }
 
 // ─── Message Templates ──────────────────────────────────────────────────────
 
 interface TemplateVars {
-  firstName: string;
   businessName: string;
   city: string;
+  industry: string;
   demoLink: string;
 }
 
-function getMessage1(category: IndustryCategory, v: TemplateVars): string {
-  switch (category) {
-    case 'TRADES':
-      return `Hey ${v.firstName} — noticed ${v.businessName} doesn't have a website yet. Built a free demo of what yours could look like: ${v.demoLink} — Alistaire`;
-    case 'BEAUTY':
-      return `Hey ${v.firstName} — looks like ${v.businessName} runs off Instagram with no booking site. Made a free demo for you: ${v.demoLink} — Alistaire`;
-    case 'FOOD':
-      return `Hey ${v.firstName} — noticed ${v.businessName} only has a Facebook page. Built a free demo of what a proper site looks like: ${v.demoLink} — Alistaire`;
-    case 'REAL_ESTATE':
-      return `Hey ${v.firstName} — saw you're listed under your agency page with no personal site. Made a free demo: ${v.demoLink} — Alistaire`;
-    case 'MEDICAL':
-      return `Hey ${v.firstName} — noticed ${v.businessName} has no website yet. Built a free demo for practices like yours: ${v.demoLink} — Alistaire`;
+type Variant = 'NO_WEBSITE' | 'BAD_WEBSITE';
+
+function getMessage1(country: Country, variant: Variant, v: TemplateVars): string {
+  const noWebsite = variant === 'NO_WEBSITE';
+  switch (country) {
+    case 'US':
+      return noWebsite
+        ? `Hey — noticed ${v.businessName} doesn't have a website yet. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `Hey — found ${v.businessName} online. Wanted to show you an example of what a modern site could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'UK':
+      return noWebsite
+        ? `Hi — noticed ${v.businessName} doesn't have a website. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`
+        : `Hi — came across ${v.businessName} online. Wanted to show you what a more modern site could look like for a ${v.industry} business: ${v.demoLink} — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'AU':
+      return noWebsite
+        ? `Hey — noticed ${v.businessName} doesn't have a website. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `Hey — found ${v.businessName} online. Wanted to show you what a modern ${v.industry} site could look like: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'NZ':
+      return noWebsite
+        ? `Hey — noticed ${v.businessName} doesn't have a website. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `Hey — came across ${v.businessName} online. Wanted to show you what a modern ${v.industry} site could look like: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'ZA':
+    case 'DEFAULT':
     default:
-      return `Hey ${v.firstName} — noticed ${v.businessName} doesn't have a website yet. Built a free demo of what yours could look like: ${v.demoLink} — Alistaire`;
+      return noWebsite
+        ? `Hey — noticed ${v.businessName} doesn't have a website yet. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `Hey — found ${v.businessName} online. Wanted to show you an example of what a modern site could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
   }
 }
 
-function getMessage2(category: IndustryCategory, v: TemplateVars): string {
-  switch (category) {
-    case 'TRADES':
-      return `Hey ${v.firstName} — trades businesses in ${v.city} that launched a site last month are averaging 6 extra calls/week from Google. Worth 30 seconds: ${v.demoLink} — Alistaire`;
-    case 'BEAUTY':
-      return `Hey ${v.firstName} — salons in ${v.city} that added online booking last quarter cut no-shows by half and stopped losing clients to competitors. Did you see the demo? — Alistaire`;
-    case 'FOOD':
-      return `Hey ${v.firstName} — restaurants in ${v.city} that launched a proper site in Q1 are seeing 30% more reservation requests within 60 days. Did it come through okay? — Alistaire`;
-    case 'REAL_ESTATE':
-      return `Hey ${v.firstName} — agents in ${v.city} who launched their own site this year are getting direct enquiries instead of sharing leads with 40 others. Worth a look? — Alistaire`;
-    case 'MEDICAL':
-      return `Hey ${v.firstName} — practices in ${v.city} that added an online booking page this year cut receptionist call volume by 40% in 30 days. Did you see it? — Alistaire`;
+function getMessage2(country: Country, variant: Variant, v: TemplateVars): string {
+  const noWebsite = variant === 'NO_WEBSITE';
+  switch (country) {
+    case 'US':
+      return noWebsite
+        ? `${v.industry} businesses in ${v.city} that launched a site last month are averaging 6 extra calls/week from Google. This is the kind of site that does it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `${v.industry} businesses in ${v.city} that refreshed their site last month are averaging 6 extra calls/week from Google. Here's the kind of site that drives it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'UK':
+      return noWebsite
+        ? `${v.industry} businesses in ${v.city} with a proper site are showing up on the first page of Google for local searches. This is the kind of site that gets them there: ${v.demoLink} — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`
+        : `${v.industry} businesses in ${v.city} that updated their site this quarter are showing up on the first page of Google. Here's the kind of site that makes the difference: ${v.demoLink} — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'AU':
+      return noWebsite
+        ? `${v.industry} businesses in ${v.city} that got a site up last month are pulling 5–7 more leads/week from Google. This is the kind of site that does it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `${v.industry} businesses in ${v.city} that refreshed their site last month are pulling 5–7 more leads/week from Google. Here's the kind of site driving that: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'NZ':
+      return noWebsite
+        ? `${v.industry} businesses in ${v.city} that launched a site this year are getting 4–5 more enquiries/week through Google. This is the kind of site that gets them there: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `${v.industry} businesses in ${v.city} that refreshed their site this year are getting 4–5 more enquiries/week through Google. Here's the kind of site making that happen: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'ZA':
+    case 'DEFAULT':
     default:
-      return `Hey ${v.firstName} — businesses in ${v.city} that launched a site last month are averaging 6 extra calls/week from Google. Worth 30 seconds: ${v.demoLink} — Alistaire`;
+      return noWebsite
+        ? `${v.industry} businesses in ${v.city} that launched a site last month are averaging 6 extra calls/week from Google. This is the kind of site that does it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `${v.industry} businesses in ${v.city} that refreshed their site last month are averaging 6 extra calls/week from Google. Here's the kind of site that drives it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
   }
 }
 
-function getMessage3(category: IndustryCategory, v: TemplateVars): string {
-  switch (category) {
-    case 'TRADES':
-      return `Hey ${v.firstName} — last one I promise. I'll build you a free homepage with ${v.businessName} on it. No catch. Want me to? — Alistaire`;
-    case 'BEAUTY':
-      return `Hey ${v.firstName} — I'll do a free version with ${v.businessName} name and services on it. Zero cost, done in 24hrs. Just say yes — Alistaire`;
-    case 'FOOD':
-      return `Hey ${v.firstName} — happy to build a free version with ${v.businessName}'s actual menu on it. No strings. Want me to? — Alistaire`;
-    case 'REAL_ESTATE':
-      return `Hey ${v.firstName} — I'll build your personal agent homepage for free. Your name, your brand. Want it? — Alistaire`;
-    case 'MEDICAL':
-      return `Hey ${v.firstName} — I'll do a free version for ${v.businessName}, your name and services on it. Just reply yes — Alistaire`;
+function getMessage3(country: Country, variant: Variant, v: TemplateVars): string {
+  const noWebsite = variant === 'NO_WEBSITE';
+  switch (country) {
+    case 'US':
+      return noWebsite
+        ? `Last one, promise. I'll build ${v.businessName} a free homepage just like this — no catch. Want me to? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `Last one, promise. I'll build ${v.businessName} a free upgraded homepage like this — no catch. Want me to? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'UK':
+      return noWebsite
+        ? `Last message from me. Happy to build ${v.businessName} a free homepage along these lines — no obligation. — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`
+        : `Last message from me. Happy to build ${v.businessName} a free refreshed homepage along these lines — no obligation. — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'AU':
+      return noWebsite
+        ? `Last one from me. I'll build ${v.businessName} a free homepage like this — no strings. Want it? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `Last one from me. I'll build ${v.businessName} a free upgraded homepage like this — no strings. Want it? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'NZ':
+      return noWebsite
+        ? `Last message from us. Happy to build ${v.businessName} a free homepage like this — no cost, no catch. Just say the word. — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `Last message from us. Happy to build ${v.businessName} a free refreshed homepage like this — no cost, no catch. Just say the word. — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
+    case 'ZA':
+    case 'DEFAULT':
     default:
-      return `Hey ${v.firstName} — last one I promise. I'll build you a free homepage with ${v.businessName} on it. No catch. Want me to? — Alistaire`;
+      return noWebsite
+        ? `Last one, promise. I'll build ${v.businessName} a free homepage just like this — no catch. Want me to? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
+        : `Last one, promise. I'll build ${v.businessName} a free upgraded homepage like this — no catch. Want me to? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
   }
+}
+
+// Normalise industry value for use in message templates
+function formatIndustry(industry?: string | null): string {
+  if (!industry) return 'local';
+  return industry.toLowerCase().trim();
 }
 
 // ─── Send Window Logic ──────────────────────────────────────────────────────
 
-// Permitted: Tuesday-Thursday, 10:00am-2:00pm recipient local time
+// Permitted: Tuesday-Thursday, 9:00am-2:00pm recipient local time
 // For simplicity, we use the lead's state/city to approximate timezone.
 // Falls back to a reasonable US timezone assumption.
 
@@ -130,11 +192,43 @@ const STATE_TIMEZONE: Record<string, string> = {
   // US Pacific
   CA: 'America/Los_Angeles', NV: 'America/Los_Angeles', OR: 'America/Los_Angeles',
   WA: 'America/Los_Angeles',
-  // Others
+  // US Other
   AK: 'America/Anchorage', HI: 'Pacific/Honolulu',
+  // UK
+  ENGLAND: 'Europe/London', SCOTLAND: 'Europe/London', WALES: 'Europe/London',
+  'NORTHERN IRELAND': 'Europe/London', UK: 'Europe/London',
+  'UNITED KINGDOM': 'Europe/London', GB: 'Europe/London', LONDON: 'Europe/London',
+  'GREATER LONDON': 'Europe/London', MANCHESTER: 'Europe/London',
+  BIRMINGHAM: 'Europe/London', LEEDS: 'Europe/London', GLASGOW: 'Europe/London',
+  LIVERPOOL: 'Europe/London', BRISTOL: 'Europe/London', SHEFFIELD: 'Europe/London',
+  EDINBURGH: 'Europe/London', CARDIFF: 'Europe/London', BELFAST: 'Europe/London',
+  // Australia
+  NSW: 'Australia/Sydney', 'NEW SOUTH WALES': 'Australia/Sydney',
+  VIC: 'Australia/Melbourne', VICTORIA: 'Australia/Melbourne',
+  QLD: 'Australia/Brisbane', QUEENSLAND: 'Australia/Brisbane',
+  'WESTERN AUSTRALIA': 'Australia/Perth',
+  SA: 'Australia/Adelaide', 'SOUTH AUSTRALIA': 'Australia/Adelaide',
+  TAS: 'Australia/Hobart', TASMANIA: 'Australia/Hobart',
+  ACT: 'Australia/Sydney', 'AUSTRALIAN CAPITAL TERRITORY': 'Australia/Sydney',
+  NT: 'Australia/Darwin', 'NORTHERN TERRITORY': 'Australia/Darwin',
+  AUSTRALIA: 'Australia/Sydney', AU: 'Australia/Sydney',
+  // New Zealand
+  NZ: 'Pacific/Auckland', 'NEW ZEALAND': 'Pacific/Auckland',
+  AUCKLAND: 'Pacific/Auckland', WELLINGTON: 'Pacific/Auckland',
+  CANTERBURY: 'Pacific/Auckland', OTAGO: 'Pacific/Auckland',
+  WAIKATO: 'Pacific/Auckland', 'BAY OF PLENTY': 'Pacific/Auckland',
+  MANAWATU: 'Pacific/Auckland', NORTHLAND: 'Pacific/Auckland',
+  TARANAKI: 'Pacific/Auckland', 'HAWKES BAY': 'Pacific/Auckland',
+  SOUTHLAND: 'Pacific/Auckland', NELSON: 'Pacific/Auckland',
+  MARLBOROUGH: 'Pacific/Auckland', TASMAN: 'Pacific/Auckland',
+  GISBORNE: 'Pacific/Auckland', 'WEST COAST': 'Pacific/Auckland',
   // South Africa
-  'WESTERN CAPE': 'Africa/Johannesburg', 'GAUTENG': 'Africa/Johannesburg',
-  'KWAZULU-NATAL': 'Africa/Johannesburg',
+  'WESTERN CAPE': 'Africa/Johannesburg', GAUTENG: 'Africa/Johannesburg',
+  'KWAZULU-NATAL': 'Africa/Johannesburg', 'EASTERN CAPE': 'Africa/Johannesburg',
+  'FREE STATE': 'Africa/Johannesburg', LIMPOPO: 'Africa/Johannesburg',
+  MPUMALANGA: 'Africa/Johannesburg', 'NORTH WEST': 'Africa/Johannesburg',
+  'NORTHERN CAPE': 'Africa/Johannesburg', 'SOUTH AFRICA': 'Africa/Johannesburg',
+  ZA: 'Africa/Johannesburg',
 };
 
 function getTimezone(state?: string | null): string {
@@ -164,8 +258,8 @@ function isInSendWindow(state?: string | null): boolean {
 
   // Tuesday(2), Wednesday(3), Thursday(4) only
   if (dayOfWeek < 2 || dayOfWeek > 4) return false;
-  // 10:00am - 2:00pm (10 to 13 inclusive, before 14:00)
-  if (hour < 10 || hour >= 14) return false;
+  // 9:00am - 2:00pm (9 to 13 inclusive, before 14:00)
+  if (hour < 9 || hour >= 14) return false;
 
   return true;
 }
@@ -188,15 +282,10 @@ function getNextSendWindow(state?: string | null, daysFromNow: number = 0): Date
     const dow = dayMap[dayStr] ?? 0;
 
     if (dow >= 2 && dow <= 4) {
-      // Set to 10:00am in the recipient's timezone
-      // We approximate by getting the current UTC offset for that timezone
-      const localNoon = new Date(test.toLocaleString('en-US', { timeZone: tz }));
-      const utcNoon = new Date(test);
-
-      // Build 10:00 AM local in that timezone
+      // Build 9:00 AM local in that timezone
       const targetLocal = test.toLocaleString('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
       const [month, day, year] = targetLocal.split('/').map(Number);
-      const localTarget = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T10:00:00`);
+      const localTarget = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T09:00:00`);
 
       // Get offset: difference between local interpretation and UTC
       const sampleUtc = test.getTime();
@@ -207,17 +296,17 @@ function getNextSendWindow(state?: string | null, daysFromNow: number = 0): Date
 
       // Only return future dates
       if (utcTarget > now) {
-        // Add random 0-120 minutes to spread sends within the window
-        utcTarget.setMinutes(utcTarget.getMinutes() + Math.floor(Math.random() * 120));
+        // Add random 0-300 minutes to spread sends across the 9am-2pm window
+        utcTarget.setMinutes(utcTarget.getMinutes() + Math.floor(Math.random() * 300));
         return utcTarget;
       }
     }
   }
 
-  // Fallback: next Tuesday at 10am UTC
+  // Fallback: next Tuesday at 9am UTC
   const fallback = new Date(now);
   fallback.setDate(fallback.getDate() + ((9 - fallback.getDay()) % 7 || 7));
-  fallback.setHours(10, 0, 0, 0);
+  fallback.setHours(9, 0, 0, 0);
   return fallback;
 }
 
@@ -246,7 +335,9 @@ interface SequenceLead {
   phone?: string | null;
   city?: string | null;
   state?: string | null;
+  address?: string | null;
   industry?: string | null;
+  hasWebsite?: boolean;
   customDemoLink?: string | null;
   ghlContactId?: string | null;
 }
@@ -255,19 +346,19 @@ export function generateSequenceMessages(
   lead: SequenceLead,
   demoLink: string
 ): { message1: string; message2: string; message3: string } {
-  const category = classifyIndustry(lead.industry);
-  const firstName = lead.ownerName?.split(' ')[0] || 'there';
+  const country = classifyCountry(lead.state, lead.address);
+  const variant: Variant = lead.hasWebsite ? 'BAD_WEBSITE' : 'NO_WEBSITE';
   const v: TemplateVars = {
-    firstName,
     businessName: lead.businessName,
     city: lead.city || 'your area',
+    industry: formatIndustry(lead.industry),
     demoLink,
   };
 
   return {
-    message1: getMessage1(category, v),
-    message2: getMessage2(category, v),
-    message3: getMessage3(category, v),
+    message1: getMessage1(country, variant, v),
+    message2: getMessage2(country, variant, v),
+    message3: getMessage3(country, variant, v),
   };
 }
 
