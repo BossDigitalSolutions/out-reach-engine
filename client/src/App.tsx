@@ -12,7 +12,6 @@ import Settings from './pages/Settings';
 import Team from './pages/Team';
 import ActivityLog from './pages/ActivityLog';
 import Schedule from './pages/Schedule';
-import SmsSequences from './pages/SmsSequences';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -63,7 +62,6 @@ function AppRoutes() {
                 <Route path="/templates" element={<EmailTemplates />} />
                 <Route path="/demos" element={<DemoLinks />} />
                 <Route path="/schedule" element={<Schedule />} />
-                <Route path="/sms-sequences" element={<SmsSequences />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route
                   path="/settings"

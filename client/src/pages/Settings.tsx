@@ -57,8 +57,6 @@ interface Settings {
   hasGhlApiKey: boolean;
   ghlLocationId?: string;
   ghlPhoneNumber?: string;
-  ghlPhoneNumberUS?: string;
-  ghlPhoneNumberZA?: string;
 }
 
 const API_KEY_FIELDS = [
@@ -77,8 +75,6 @@ export default function Settings() {
   const [whatsAppPhoneId, setWhatsAppPhoneId] = useState('');
   const [ghlLocationId, setGhlLocationId] = useState('');
   const [ghlPhoneNumber, setGhlPhoneNumber] = useState('');
-  const [ghlPhoneNumberUS, setGhlPhoneNumberUS] = useState('');
-  const [ghlPhoneNumberZA, setGhlPhoneNumberZA] = useState('');
 
   // General settings state
   const [form, setForm] = useState({
@@ -139,8 +135,6 @@ export default function Settings() {
       if (settings.whatsAppPhoneId) setWhatsAppPhoneId(settings.whatsAppPhoneId);
       if (settings.ghlLocationId) setGhlLocationId(settings.ghlLocationId);
       if (settings.ghlPhoneNumber) setGhlPhoneNumber(settings.ghlPhoneNumber);
-      if (settings.ghlPhoneNumberUS) setGhlPhoneNumberUS(settings.ghlPhoneNumberUS);
-      if (settings.ghlPhoneNumberZA) setGhlPhoneNumberZA(settings.ghlPhoneNumberZA);
     }
   }, [settings]);
 
@@ -233,8 +227,6 @@ export default function Settings() {
       if (whatsAppPhoneId.trim()) payload.whatsAppPhoneId = whatsAppPhoneId.trim();
       if (ghlLocationId.trim()) payload.ghlLocationId = ghlLocationId.trim();
       if (ghlPhoneNumber.trim()) payload.ghlPhoneNumber = ghlPhoneNumber.trim();
-      if (ghlPhoneNumberUS.trim()) payload.ghlPhoneNumberUS = ghlPhoneNumberUS.trim();
-      if (ghlPhoneNumberZA.trim()) payload.ghlPhoneNumberZA = ghlPhoneNumberZA.trim();
       for (const [key, value] of Object.entries(apiKeys)) {
         if (value.trim()) payload[key] = value.trim();
       }
@@ -632,7 +624,7 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label className="label">Default SMS Phone Number</label>
+            <label className="label">SMS Phone Number</label>
             <input
               type="text"
               className="input"
@@ -640,31 +632,7 @@ export default function Settings() {
               value={ghlPhoneNumber}
               onChange={(e) => setGhlPhoneNumber(e.target.value)}
             />
-            <p className="text-xs text-slate-500 mt-1">Fallback number if no country-specific number is set.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">US Phone Number</label>
-              <input
-                type="text"
-                className="input"
-                placeholder="e.g. +14155551234"
-                value={ghlPhoneNumberUS}
-                onChange={(e) => setGhlPhoneNumberUS(e.target.value)}
-              />
-              <p className="text-xs text-slate-500 mt-1">For leads in the United States.</p>
-            </div>
-            <div>
-              <label className="label">South Africa Phone Number</label>
-              <input
-                type="text"
-                className="input"
-                placeholder="e.g. +27760518635"
-                value={ghlPhoneNumberZA}
-                onChange={(e) => setGhlPhoneNumberZA(e.target.value)}
-              />
-              <p className="text-xs text-slate-500 mt-1">For leads in South Africa.</p>
-            </div>
+            <p className="text-xs text-slate-500 mt-1">The phone number purchased from GHL that SMS will be sent from.</p>
           </div>
         </div>
       )}

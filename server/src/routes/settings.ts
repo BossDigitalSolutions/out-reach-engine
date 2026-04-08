@@ -19,8 +19,6 @@ const ADMIN_ONLY_FIELDS = [
   'ghlApiKey',
   'ghlLocationId',
   'ghlPhoneNumber',
-  'ghlPhoneNumberUS',
-  'ghlPhoneNumberZA',
 ];
 
 const settingsSchema = z.object({
@@ -33,8 +31,6 @@ const settingsSchema = z.object({
   ghlApiKey: z.string().optional(),
   ghlLocationId: z.string().optional(),
   ghlPhoneNumber: z.string().optional(),
-  ghlPhoneNumberUS: z.string().optional(),
-  ghlPhoneNumberZA: z.string().optional(),
   senderEmail: z.string().email().optional().or(z.literal('')),
   // All users
   senderName: z.string().optional(),

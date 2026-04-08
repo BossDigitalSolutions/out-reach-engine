@@ -1,70 +1,12 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { syncContactToGhl, sendGhlMessage, getGhlConversations } from '../services/ghl';
 import { decryptField } from '../services/encryption';
 import { generateSms } from '../services/claude';
-import { startSmsSequence, stopSmsSequence, stopSequencesForLead, validateLeadForSequence, generateSequenceMessages } from '../services/smsSequence';
 
 const router = Router();
-
-// ─── GHL Inbound Webhook (public — no auth, called by GHL) ─────────────────
-// Configure this URL in GHL → Settings → Webhooks → Inbound Message
-router.post('/webhook/inbound', async (req: Request, res: Response) => {
-  try {
-    const { type, locationId, contactId, body, message, direction, messageType } = req.body || {};
-
-    // Only process inbound messages (replies)
-    if (direction !== 'inbound') {
-      return res.sendStatus(200);
-    }
-
-    const messageBody = body || message || '';
-    if (!contactId) return res.sendStatus(200);
-
-    // Find the lead by GHL contact ID
-    const lead = await prisma.lead.findFirst({
-      where: { ghlContactId: contactId },
-    });
-    if (!lead) {
-      console.log(`GHL webhook: no lead found for contactId ${contactId}`);
-      return res.sendStatus(200);
-    }
-
-    // Update lead status to REPLIED
-    await prisma.lead.update({
-      where: { id: lead.id },
-      data: { status: 'REPLIED' },
-    });
-
-    // Stop any active SMS sequences for this lead
-    await stopSequencesForLead(lead.id);
-
-    // Find the most recent sent email for this lead and mark it as replied
-    const latestEmail = await prisma.email.findFirst({
-      where: {
-        leadId: lead.id,
-        status: { in: ['SENT', 'OPENED', 'CLICKED'] },
-      },
-      orderBy: { sentAt: 'desc' },
-    });
-
-    if (latestEmail) {
-      await prisma.email.update({
-        where: { id: latestEmail.id },
-        data: { status: 'REPLIED', repliedAt: new Date() },
-      });
-    }
-
-    console.log(`GHL webhook: marked lead ${lead.businessName} as REPLIED (type: ${type || messageType})`);
-    res.sendStatus(200);
-  } catch (err) {
-    console.error('GHL webhook error:', err instanceof Error ? err.message : err);
-    res.sendStatus(200); // Always return 200 to GHL
-  }
-});
-
 router.use(authenticate);
 
 // Helper to get GHL credentials or return an error
@@ -387,124 +329,6 @@ router.post('/send-sms-bulk', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: err.errors[0].message });
     }
     res.status(500).json({ error: 'Failed to send SMS messages' });
-  }
-});
-
-// ─── SMS Sequence Endpoints ─────────────────────────────────────────────────
-
-// POST /api/ghl/sms-sequence/start — start SMS sequence for one or more leads
-router.post('/sms-sequence/start', async (req: AuthRequest, res: Response) => {
-  try {
-    const { leadIds } = z.object({ leadIds: z.array(z.string()).min(1) }).parse(req.body);
-
-    const creds = await getGhlCredentials(req.user!.userId);
-    if (!creds) {
-      return res.status(400).json({ error: 'GoHighLevel not configured. Add API key and Location ID in Settings.' });
-    }
-
-    const leads = await prisma.lead.findMany({
-      where: { id: { in: leadIds }, userId: req.user!.userId },
-    });
-
-    // Fetch demo links for auto-matching
-    const demoLinks = await prisma.demoLink.findMany({ where: { userId: req.user!.userId } });
-
-    const started: Array<{ leadId: string; businessName: string; sequenceId: string; message1: string; message2: string; message3: string }> = [];
-    const errors: Array<{ leadId: string; businessName: string; error: string; missing?: string[] }> = [];
-
-    for (const lead of leads) {
-      // Validate required fields
-      const validation = validateLeadForSequence(lead);
-      if (!validation.valid) {
-        errors.push({ leadId: lead.id, businessName: lead.businessName, error: 'Missing required fields', missing: validation.missing });
-        continue;
-      }
-
-      // Find demo link
-      const demoLink =
-        lead.customDemoLink ||
-        demoLinks.find(
-          (d) => lead.industry && d.industry.toLowerCase().includes(lead.industry!.toLowerCase())
-        )?.url;
-
-      if (!demoLink) {
-        errors.push({ leadId: lead.id, businessName: lead.businessName, error: 'No demo link found for this industry. Add one in Demo Links.' });
-        continue;
-      }
-
-      try {
-        const result = await startSmsSequence(req.user!.userId, lead.id, demoLink);
-        started.push({ leadId: lead.id, businessName: lead.businessName, sequenceId: result.id, message1: result.message1, message2: result.message2, message3: result.message3 });
-      } catch (err) {
-        errors.push({ leadId: lead.id, businessName: lead.businessName, error: err instanceof Error ? err.message : 'Failed to start sequence' });
-      }
-    }
-
-    res.json({ started: started.length, failed: errors.length, results: started, errors });
-  } catch (err) {
-    console.error('SMS sequence start error:', err);
-    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0].message });
-    const message = err instanceof Error ? err.message : 'Failed to start SMS sequences';
-    res.status(500).json({ error: message });
-  }
-});
-
-// POST /api/ghl/sms-sequence/stop — stop an active SMS sequence
-router.post('/sms-sequence/stop', async (req: AuthRequest, res: Response) => {
-  try {
-    const { sequenceId } = z.object({ sequenceId: z.string() }).parse(req.body);
-    await stopSmsSequence(sequenceId, req.user!.userId);
-    res.json({ message: 'Sequence stopped' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to stop sequence' });
-  }
-});
-
-// GET /api/ghl/sms-sequence/status — get all sequences for current user
-router.get('/sms-sequence/status', async (req: AuthRequest, res: Response) => {
-  try {
-    const { leadId, status } = req.query;
-    const where: Record<string, unknown> = { userId: req.user!.userId };
-    if (leadId) where.leadId = leadId as string;
-    if (status) where.status = status as string;
-
-    const sequences = await prisma.smsSequence.findMany({
-      where,
-      include: { lead: { select: { businessName: true, ownerName: true, phone: true, industry: true, city: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-
-    res.json({ sequences });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch sequences' });
-  }
-});
-
-// POST /api/ghl/sms-sequence/preview — preview messages without starting
-router.post('/sms-sequence/preview', async (req: AuthRequest, res: Response) => {
-  try {
-    const { leadId } = z.object({ leadId: z.string() }).parse(req.body);
-
-    const lead = await prisma.lead.findFirst({
-      where: { id: leadId, userId: req.user!.userId },
-    });
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
-
-    const demoLinks = await prisma.demoLink.findMany({ where: { userId: req.user!.userId } });
-    const demoLink =
-      lead.customDemoLink ||
-      demoLinks.find(
-        (d) => lead.industry && d.industry.toLowerCase().includes(lead.industry!.toLowerCase())
-      )?.url || '{demoLink}';
-
-    const validation = validateLeadForSequence(lead);
-    const messages = generateSequenceMessages(lead, demoLink);
-
-    res.json({ ...messages, validation, lead: { businessName: lead.businessName, ownerName: lead.ownerName, phone: lead.phone, industry: lead.industry, city: lead.city } });
-  } catch (err) {
-    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors[0].message });
-    res.status(500).json({ error: 'Failed to preview messages' });
   }
 });
 

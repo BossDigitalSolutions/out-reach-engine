@@ -36,7 +36,6 @@ model User {
   notes            Note[]
   revenue          RevenueEntry[]
   whatsAppMessages WhatsAppMessage[]
-  smsSequences     SmsSequence[]
   sessions         Session[]
   activityLogs     ActivityLog[]
 }
@@ -89,13 +88,9 @@ model Settings {
   industryWeights   Json?
   whatsAppPhoneId   String?
   whatsAppToken     String?
-  ghlApiKey          String?
-  ghlLocationId      String?
-  ghlPhoneNumber     String?
-  ghlPhoneNumberUS   String?
-  ghlPhoneNumberZA   String?
-  smsWarmupStartDate DateTime?
-  smsDailyLimit      Int     @default(50)
+  ghlApiKey         String?
+  ghlLocationId     String?
+  ghlPhoneNumber    String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -136,7 +131,6 @@ model Lead {
   notes            Note[]
   revenue          RevenueEntry[]
   whatsAppMessages WhatsAppMessage[]
-  smsSequences     SmsSequence[]
 }
 
 enum LeadStatus {
@@ -259,39 +253,4 @@ model WhatsAppMessage {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
-}
-
-enum SmsSequenceStatus {
-  PENDING
-  ACTIVE
-  REPLIED
-  COMPLETED
-  STOPPED
-}
-
-model SmsSequence {
-  id              String            @id @default(cuid())
-  userId          String
-  leadId          String
-  status          SmsSequenceStatus @default(PENDING)
-  currentStep     Int               @default(0)
-  message1        String?
-  message2        String?
-  message3        String?
-  message1SentAt  DateTime?
-  message2SentAt  DateTime?
-  message3SentAt  DateTime?
-  nextSendAt      DateTime?
-  repliedAt       DateTime?
-  ghlMessageId1   String?
-  ghlMessageId2   String?
-  ghlMessageId3   String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
-
-  @@index([status, nextSendAt])
-  @@index([userId, leadId])
 }

@@ -14,7 +14,6 @@ import {
   ScrollText,
   Shield,
   CalendarClock,
-  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -25,7 +24,6 @@ const memberNavItems = [
   { to: '/templates', icon: Mail, label: 'Email Templates' },
   { to: '/demos', icon: Link, label: 'Demo Links' },
   { to: '/schedule', icon: CalendarClock, label: 'Scheduled Emails' },
-  { to: '/sms-sequences', icon: MessageSquare, label: 'SMS Sequences' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
 ];
 
