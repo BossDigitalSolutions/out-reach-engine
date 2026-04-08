@@ -6,6 +6,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { searchBusinesses } from '../services/googlePlaces';
 import { scrapeWebsite } from '../services/websiteScraper';
 import { calculateScore } from '../services/scoring';
+import { decryptField } from '../services/encryption';
 
 const router = Router();
 router.use(authenticate);
@@ -31,7 +32,7 @@ router.post('/search', scraperLimiter, async (req: AuthRequest, res: Response) =
       where: { userId: req.user!.userId },
     });
 
-    const apiKey = settings?.googleApiKey || process.env.GOOGLE_PLACES_API_KEY;
+    const apiKey = decryptField(settings?.googleApiKey) || process.env.GOOGLE_PLACES_API_KEY;
     if (!apiKey) {
       return res.status(400).json({
         error: 'Google Places API key not configured. Add it in Settings.',
