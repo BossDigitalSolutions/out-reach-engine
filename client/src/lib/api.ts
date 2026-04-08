@@ -122,6 +122,12 @@ export const ghlApi = {
   generateSmsBulk: (leadIds: string[]) => api.post('/ghl/generate-sms-bulk', { leadIds }),
   sendSmsBulk: (messages: Array<{ leadId: string; message: string }>) =>
     api.post('/ghl/send-sms-bulk', { messages }),
+  // SMS Sequences
+  startSequence: (leadIds: string[]) => api.post('/ghl/sms-sequence/start', { leadIds }),
+  stopSequence: (sequenceId: string) => api.post('/ghl/sms-sequence/stop', { sequenceId }),
+  sequenceStatus: (params?: { leadId?: string; status?: string }) =>
+    api.get('/ghl/sms-sequence/status', { params }),
+  previewSequence: (leadId: string) => api.post('/ghl/sms-sequence/preview', { leadId }),
 };
 
 // WhatsApp

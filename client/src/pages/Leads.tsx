@@ -150,6 +150,12 @@ export default function Leads() {
   const [showSmsModal, setShowSmsModal] = useState(false);
   const [generatedSms, setGeneratedSms] = useState<Array<{ leadId: string; businessName: string; phone: string; message: string }>>([]);
   const [selectedDemoId, setSelectedDemoId] = useState('');
+  const [showSequenceModal, setShowSequenceModal] = useState(false);
+  const [sequenceResults, setSequenceResults] = useState<{
+    started: number; failed: number;
+    results: Array<{ leadId: string; businessName: string; sequenceId: string; message1: string; message2: string; message3: string }>;
+    errors: Array<{ leadId: string; businessName: string; error: string; missing?: string[] }>;
+  } | null>(null);
 
   const { data: industriesData } = useQuery({
     queryKey: ['lead-industries'],
@@ -242,6 +248,28 @@ export default function Leads() {
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'SMS generation failed';
+      toast.error(msg);
+    },
+  });
+
+  const startSequenceMutation = useMutation({
+    mutationFn: () =>
+      ghlApi.startSequence(Array.from(selected)).then((r) => r.data),
+    onSuccess: (data: {
+      started: number; failed: number;
+      results: Array<{ leadId: string; businessName: string; sequenceId: string; message1: string; message2: string; message3: string }>;
+      errors: Array<{ leadId: string; businessName: string; error: string; missing?: string[] }>;
+    }) => {
+      setSequenceResults(data);
+      setShowSequenceModal(true);
+      if (data.failed > 0) toast.error(`${data.failed} lead(s) could not start — see details`);
+      if (data.started > 0) toast.success(`Started ${data.started} SMS sequence${data.started !== 1 ? 's' : ''}`);
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ['leads'] });
+    },
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { error?: string }; status?: number }; message?: string };
+      const msg = axiosErr?.response?.data?.error || axiosErr?.message || 'Failed to start sequences';
       toast.error(msg);
     },
   });
@@ -421,6 +449,24 @@ export default function Leads() {
                   <>
                     <Smartphone size={16} />
                     Generate SMS ({selected.size})
+                  </>
+                )}
+              </button>
+              <button
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                onClick={() => startSequenceMutation.mutate()}
+                disabled={startSequenceMutation.isPending}
+                title="Start 3-message SMS outreach sequence (Day 0, 3, 10)"
+              >
+                {startSequenceMutation.isPending ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Zap size={16} />
+                    SMS Sequence ({selected.size})
                   </>
                 )}
               </button>
@@ -866,6 +912,67 @@ export default function Leads() {
             qc.invalidateQueries({ queryKey: ['leads'] });
           }}
         />
+      )}
+
+      {/* SMS Sequence Results Modal */}
+      {showSequenceModal && sequenceResults && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+              <div>
+                <h2 className="text-lg font-bold text-white">SMS Sequences Started</h2>
+                <p className="text-sm text-slate-400">
+                  {sequenceResults.started} started, {sequenceResults.failed} failed — Messages send Tue-Thu 10am-2pm
+                </p>
+              </div>
+              <button onClick={() => { setShowSequenceModal(false); setSequenceResults(null); }} className="text-slate-400 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 space-y-4">
+              {sequenceResults.results.map((r) => (
+                <div key={r.leadId} className="bg-slate-800/50 border border-slate-700 rounded-lg p-3">
+                  <h3 className="text-sm font-bold text-emerald-400 mb-2">{r.businessName}</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <span className="text-xs font-semibold text-slate-400">Day 0 — The Observation Hook</span>
+                      <p className="text-xs text-slate-300 mt-0.5 bg-slate-900/50 rounded p-2">{r.message1}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-slate-400">Day 3 — The Timeline/Outcome Hook</span>
+                      <p className="text-xs text-slate-300 mt-0.5 bg-slate-900/50 rounded p-2">{r.message2}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-slate-400">Day 10 — The Free Offer Close</span>
+                      <p className="text-xs text-slate-300 mt-0.5 bg-slate-900/50 rounded p-2">{r.message3}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {sequenceResults.errors.length > 0 && (
+                <div className="mt-2">
+                  <h3 className="text-sm font-semibold text-red-400 mb-2">Failed to start:</h3>
+                  {sequenceResults.errors.map((e) => (
+                    <div key={e.leadId} className="text-xs text-red-300 bg-red-900/20 border border-red-800/30 rounded p-2 mb-1">
+                      <span className="font-medium">{e.businessName}:</span> {e.error}
+                      {e.missing && e.missing.length > 0 && (
+                        <span className="text-red-400"> (missing: {e.missing.join(', ')})</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={() => { setShowSequenceModal(false); setSequenceResults(null); }}
+                className="btn-primary"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Generated Emails Modal */}

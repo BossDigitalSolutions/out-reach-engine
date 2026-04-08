@@ -151,3 +151,34 @@ export async function getGhlConversations(
 
   return res?.data?.conversations || [];
 }
+
+// ─── Get messages from a GHL conversation ────────────────────────────────────
+
+export async function getGhlMessages(
+  conversationId: string,
+  apiKey: string
+): Promise<Array<{ id: string; type: number; messageType: string; body: string; direction: string; status: string; dateAdded: string; contactId: string }>> {
+  const client = ghlClient(apiKey);
+
+  const res = await client.get(`/conversations/${conversationId}/messages`, {
+    headers: { Version: '2021-04-15' },
+  }).catch(() => null);
+
+  return res?.data?.messages?.messages || res?.data?.messages || [];
+}
+
+// ─── Get recent inbound messages for a location ─────────────────────────────
+
+export async function getGhlRecentConversations(
+  apiKey: string,
+  locationId: string
+): Promise<Array<{ id: string; contactId: string; lastMessageDate: string; lastMessageType: string; lastMessageBody: string; lastMessageDirection: string }>> {
+  const client = ghlClient(apiKey);
+
+  const res = await client.get('/conversations/search', {
+    params: { locationId, sortBy: 'last_message_date', sortOrder: 'desc', limit: 50 },
+    headers: { Version: '2021-04-15' },
+  }).catch(() => null);
+
+  return res?.data?.conversations || [];
+}
