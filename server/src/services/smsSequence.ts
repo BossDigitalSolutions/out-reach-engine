@@ -383,7 +383,8 @@ export function generateSequenceMessages(
 export async function startSmsSequence(
   userId: string,
   leadId: string,
-  demoLink: string
+  demoLink: string,
+  ghlCredentials?: { apiKey: string; locationId: string }
 ): Promise<{ id: string; message1: string; message2: string; message3: string }> {
   const lead = await prisma.lead.findFirst({
     where: { id: leadId, userId },
@@ -396,6 +397,35 @@ export async function startSmsSequence(
     where: { leadId, userId, status: { in: ['PENDING', 'ACTIVE'] } },
   });
   if (existing) throw new Error('Lead already has an active SMS sequence');
+
+  // Immediately sync contact to GHL so it's visible before the first SMS fires
+  if (ghlCredentials && !lead.ghlContactId) {
+    try {
+      const ghlContactId = await syncContactToGhl(
+        {
+          businessName: lead.businessName,
+          ownerName: lead.ownerName,
+          email: lead.email,
+          phone: lead.phone,
+          address: lead.address,
+          city: lead.city,
+          state: lead.state,
+          industry: lead.industry,
+          websiteUrl: lead.websiteUrl,
+          googleRating: lead.googleRating,
+          description: lead.description,
+        },
+        ghlCredentials.apiKey,
+        ghlCredentials.locationId
+      );
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: { ghlContactId },
+      });
+    } catch (err) {
+      console.error(`GHL sync on sequence start failed for ${lead.businessName}:`, err instanceof Error ? err.message : err);
+    }
+  }
 
   const messages = generateSequenceMessages(lead, demoLink);
 

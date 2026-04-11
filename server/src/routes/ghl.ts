@@ -437,7 +437,7 @@ router.post('/sms-sequence/start', async (req: AuthRequest, res: Response) => {
       }
 
       try {
-        const result = await startSmsSequence(req.user!.userId, lead.id, demoLink);
+        const result = await startSmsSequence(req.user!.userId, lead.id, demoLink, creds);
         started.push({ leadId: lead.id, businessName: lead.businessName, sequenceId: result.id, message1: result.message1, message2: result.message2, message3: result.message3 });
       } catch (err) {
         errors.push({ leadId: lead.id, businessName: lead.businessName, error: err instanceof Error ? err.message : 'Failed to start sequence' });
