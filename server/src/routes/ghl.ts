@@ -416,7 +416,11 @@ router.post('/sms-sequence/start', async (req: AuthRequest, res: Response) => {
       // Validate required fields
       const validation = validateLeadForSequence(lead);
       if (!validation.valid) {
-        errors.push({ leadId: lead.id, businessName: lead.businessName, error: 'Missing required fields', missing: validation.missing });
+        if (validation.nonMobile) {
+          errors.push({ leadId: lead.id, businessName: lead.businessName, error: 'Non-Mobile — SMS Skipped (UK landline/freephone number)' });
+        } else {
+          errors.push({ leadId: lead.id, businessName: lead.businessName, error: 'Missing required fields', missing: validation.missing });
+        }
         continue;
       }
 

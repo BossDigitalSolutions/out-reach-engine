@@ -163,6 +163,22 @@ function formatIndustry(industry?: string | null): string {
   return industry.toLowerCase().trim();
 }
 
+// ─── UK Non-Mobile Number Detection ─────────────────────────────────────────
+// Only UK numbers starting with 07 or +447 are mobile.
+// 0800, 0300, 0345, 01, 02 are landline/freephone — not SMS-eligible.
+
+export function isUkNonMobile(phone: string | null | undefined, state?: string | null, address?: string | null): boolean {
+  if (!phone) return false;
+  const country = classifyCountry(state, address);
+  if (country !== 'UK') return false;
+
+  const cleaned = phone.replace(/[\s\-()]/g, '');
+  // UK mobile: starts with 07 (local) or +447 (international)
+  if (cleaned.startsWith('+447') || cleaned.startsWith('07')) return false;
+  // Everything else for a UK lead is non-mobile
+  return true;
+}
+
 // ─── Send Window Logic ──────────────────────────────────────────────────────
 
 // Permitted: Tuesday-Thursday, 9:00am-2:00pm recipient local time
@@ -610,10 +626,15 @@ export function validateLeadForSequence(lead: {
   phone?: string | null;
   industry?: string | null;
   city?: string | null;
-}): { valid: boolean; missing: string[] } {
+  state?: string | null;
+  address?: string | null;
+}): { valid: boolean; missing: string[]; nonMobile?: boolean } {
   const missing: string[] = [];
   if (!lead.phone) missing.push('phone');
   if (!lead.industry) missing.push('industry');
-  if (!lead.city) missing.push('city');
+  // city is no longer required — falls back to "your area" in templates
+  if (isUkNonMobile(lead.phone, lead.state, lead.address)) {
+    return { valid: false, missing: [], nonMobile: true };
+  }
   return { valid: missing.length === 0, missing };
 }
