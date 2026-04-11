@@ -644,15 +644,15 @@ export default function Settings() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">US Phone Number</label>
+              <label className="label">UK Phone Number</label>
               <input
                 type="text"
                 className="input"
-                placeholder="e.g. +14155551234"
+                placeholder="e.g. +447911123456"
                 value={ghlPhoneNumberUS}
                 onChange={(e) => setGhlPhoneNumberUS(e.target.value)}
               />
-              <p className="text-xs text-slate-500 mt-1">For leads in the United States.</p>
+              <p className="text-xs text-slate-500 mt-1">For leads in the United Kingdom.</p>
             </div>
             <div>
               <label className="label">South Africa Phone Number</label>
