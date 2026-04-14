@@ -5,6 +5,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { LeadStatus } from '@prisma/client';
 import { calculateScore } from '../services/scoring';
 import { scrapeWebsite } from '../services/websiteScraper';
+import { normalizePhone, isSmsEligible } from '../services/phoneUtils';
 
 const router = Router();
 router.use(authenticate);
@@ -127,8 +128,15 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     const data = leadSchema.parse(req.body);
     const settings = await prisma.settings.findUnique({ where: { userId: req.user!.userId } });
     const score = calculateScore(data, settings);
+    const phoneInfo = data.phone ? normalizePhone(data.phone) : null;
     const lead = await prisma.lead.create({
-      data: { ...data, userId: req.user!.userId, score },
+      data: {
+        ...data,
+        phone: phoneInfo?.e164 || data.phone || null,
+        phoneMobile: phoneInfo ? isSmsEligible(phoneInfo) : null,
+        userId: req.user!.userId,
+        score,
+      },
     });
     res.status(201).json(lead);
   } catch (err) {
@@ -143,6 +151,14 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const data = leadSchema.partial().parse(req.body);
+    // Normalize phone if it's being updated
+    if (data.phone) {
+      const phoneInfo = normalizePhone(data.phone);
+      if (phoneInfo) {
+        (data as Record<string, unknown>).phone = phoneInfo.e164;
+        (data as Record<string, unknown>).phoneMobile = isSmsEligible(phoneInfo);
+      }
+    }
     const lead = await prisma.lead.updateMany({
       where: { id: req.params.id, userId: req.user!.userId },
       data,

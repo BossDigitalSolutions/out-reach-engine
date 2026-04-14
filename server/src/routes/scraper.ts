@@ -7,6 +7,7 @@ import { searchBusinesses } from '../services/googlePlaces';
 import { scrapeWebsite } from '../services/websiteScraper';
 import { calculateScore } from '../services/scoring';
 import { decryptField } from '../services/encryption';
+import { normalizePhone, isSmsEligible } from '../services/phoneUtils';
 
 const router = Router();
 router.use(authenticate);
@@ -95,12 +96,17 @@ router.post('/save', async (req: AuthRequest, res: Response) => {
     );
 
     const created = await prisma.lead.createMany({
-      data: newLeads.map((lead) => ({
-        ...lead,
-        googleRating: lead.googleRating ?? null,
-        reviewCount: lead.reviewCount ?? null,
-        userId: req.user!.userId,
-      })),
+      data: newLeads.map((lead) => {
+        const phoneInfo = normalizePhone(lead.phone);
+        return {
+          ...lead,
+          phone: phoneInfo?.e164 || lead.phone || null,
+          phoneMobile: phoneInfo ? isSmsEligible(phoneInfo) : null,
+          googleRating: lead.googleRating ?? null,
+          reviewCount: lead.reviewCount ?? null,
+          userId: req.user!.userId,
+        };
+      }),
     });
 
     const websiteLeadCount = newLeads.filter((l) => l.websiteUrl).length;

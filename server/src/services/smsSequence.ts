@@ -1,6 +1,7 @@
 import { prisma } from '../index';
 import { decryptField } from './encryption';
 import { syncContactToGhl, sendGhlMessage } from './ghl';
+import { normalizePhone, isSmsEligible } from './phoneUtils';
 
 // ─── Country Classification ─────────────────────────────────────────────────
 
@@ -163,20 +164,13 @@ function formatIndustry(industry?: string | null): string {
   return industry.toLowerCase().trim();
 }
 
-// ─── UK Non-Mobile Number Detection ─────────────────────────────────────────
-// Only UK numbers starting with 07 or +447 are mobile.
-// 0800, 0300, 0345, 01, 02 are landline/freephone — not SMS-eligible.
+// ─── Phone SMS Eligibility (delegates to phoneUtils) ────────────────────────
 
-export function isUkNonMobile(phone: string | null | undefined, state?: string | null, address?: string | null): boolean {
+export function isUkNonMobile(phone: string | null | undefined): boolean {
   if (!phone) return false;
-  const country = classifyCountry(state, address);
-  if (country !== 'UK') return false;
-
-  const cleaned = phone.replace(/[\s\-()]/g, '');
-  // UK mobile: starts with 07 (local) or +447 (international)
-  if (cleaned.startsWith('+447') || cleaned.startsWith('07')) return false;
-  // Everything else for a UK lead is non-mobile
-  return true;
+  const info = normalizePhone(phone);
+  if (!info) return false;
+  return !isSmsEligible(info);
 }
 
 // ─── Send Window Logic ──────────────────────────────────────────────────────
@@ -654,6 +648,7 @@ export function validateLeadForSequence(lead: {
   ownerName?: string | null;
   businessName: string;
   phone?: string | null;
+  phoneMobile?: boolean | null;
   industry?: string | null;
   city?: string | null;
   state?: string | null;
@@ -662,9 +657,17 @@ export function validateLeadForSequence(lead: {
   const missing: string[] = [];
   if (!lead.phone) missing.push('phone');
   if (!lead.industry) missing.push('industry');
-  // city is no longer required — falls back to "your area" in templates
-  if (isUkNonMobile(lead.phone, lead.state, lead.address)) {
+
+  // Use stored phoneMobile flag if available, otherwise check dynamically
+  if (lead.phoneMobile === false) {
     return { valid: false, missing: [], nonMobile: true };
   }
+  if (lead.phoneMobile == null && lead.phone) {
+    const info = normalizePhone(lead.phone);
+    if (info && !isSmsEligible(info)) {
+      return { valid: false, missing: [], nonMobile: true };
+    }
+  }
+
   return { valid: missing.length === 0, missing };
 }

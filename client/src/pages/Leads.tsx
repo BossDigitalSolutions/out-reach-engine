@@ -62,6 +62,7 @@ interface Lead {
   } | null;
   ghlContactId?: string | null;
   customDemoLink?: string | null;
+  phoneMobile?: boolean | null;
   createdAt: string;
   _count: { emails: number; notes: number };
 }
@@ -683,6 +684,12 @@ export default function Leads() {
                           <div className="flex items-center gap-1 text-xs text-slate-500">
                             <Phone size={10} />
                             {lead.phone}
+                            {lead.phoneMobile === false && (
+                              <span className="text-xs text-red-400 bg-red-900/20 border border-red-800/30 rounded px-1 py-0.5 ml-1">Landline</span>
+                            )}
+                            {lead.phoneMobile === true && (
+                              <span className="text-xs text-green-400 bg-green-900/20 border border-green-800/30 rounded px-1 py-0.5 ml-1">Mobile</span>
+                            )}
                           </div>
                         )}
                         {lead.linkedinUrl && (

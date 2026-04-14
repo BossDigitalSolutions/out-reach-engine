@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toE164 } from './phoneUtils';
 
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
@@ -56,7 +57,7 @@ export async function syncContactToGhl(
   };
 
   if (lead.email) payload.email = lead.email;
-  if (lead.phone) payload.phone = lead.phone;
+  if (lead.phone) payload.phone = toE164(lead.phone) || lead.phone;
   if (lead.address) payload.address1 = lead.address;
   if (lead.city) payload.city = lead.city;
   if (lead.state) payload.state = lead.state;

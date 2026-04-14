@@ -107,6 +107,7 @@ model Lead {
   ownerName        String?
   email            String?
   phone            String?
+  phoneMobile      Boolean?
   address          String?
   city             String?
   state            String?
