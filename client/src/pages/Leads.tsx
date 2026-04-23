@@ -929,7 +929,7 @@ export default function Leads() {
               <div>
                 <h2 className="text-lg font-bold text-white">SMS Sequences Started</h2>
                 <p className="text-sm text-slate-400">
-                  {sequenceResults.started} started, {sequenceResults.failed} failed — Messages send Tue-Thu 10am-2pm
+                  {sequenceResults.started} started, {sequenceResults.failed} failed — Messages send Tue-Thu 18:30-20:30 UK time
                 </p>
               </div>
               <button onClick={() => { setShowSequenceModal(false); setSequenceResults(null); }} className="text-slate-400 hover:text-white">
@@ -946,11 +946,11 @@ export default function Leads() {
                       <p className="text-xs text-slate-300 mt-0.5 bg-slate-900/50 rounded p-2">{r.message1}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-slate-400">Day 3 — The Timeline/Outcome Hook</span>
+                      <span className="text-xs font-semibold text-slate-400">Day 3 — The Proof Nudge</span>
                       <p className="text-xs text-slate-300 mt-0.5 bg-slate-900/50 rounded p-2">{r.message2}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-slate-400">Day 10 — The Free Offer Close</span>
+                      <span className="text-xs font-semibold text-slate-400">Day 7 — The Gift Close</span>
                       <p className="text-xs text-slate-300 mt-0.5 bg-slate-900/50 rounded p-2">{r.message3}</p>
                     </div>
                   </div>

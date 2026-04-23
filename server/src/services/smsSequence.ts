@@ -64,104 +64,40 @@ function classifyCountry(state?: string | null, address?: string | null): Countr
 }
 
 // ─── Message Templates ──────────────────────────────────────────────────────
+// 3-message sequence: Day 0 (Observation Hook), Day 3 (Proof Nudge), Day 7 (Gift Close)
+// Messages 1 and 2 contain NO link. Only Message 3 contains the demo link.
+// No "Reply STOP" — GHL appends opt-out language automatically.
 
 interface TemplateVars {
   businessName: string;
-  city: string;
-  industry: string;
+  trade: string;      // singular: "plumber", "electrician", "roofer"
+  tradePlural: string; // plural: "plumbers", "electricians", "roofers"
   demoLink: string;
 }
 
-type Variant = 'NO_WEBSITE' | 'BAD_WEBSITE';
-
-function getMessage1(country: Country, variant: Variant, v: TemplateVars): string {
-  const noWebsite = variant === 'NO_WEBSITE';
-  switch (country) {
-    case 'US':
-      return noWebsite
-        ? `Hey — noticed ${v.businessName} doesn't have a website yet. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `Hey — found ${v.businessName} online. Wanted to show you an example of what a modern site could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'UK':
-      return noWebsite
-        ? `Hi — noticed ${v.businessName} doesn't have a website. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`
-        : `Hi — came across ${v.businessName} online. Wanted to show you what a more modern site could look like for a ${v.industry} business: ${v.demoLink} — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'AU':
-      return noWebsite
-        ? `Hey — noticed ${v.businessName} doesn't have a website. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `Hey — found ${v.businessName} online. Wanted to show you what a modern ${v.industry} site could look like: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'NZ':
-      return noWebsite
-        ? `Hey — noticed ${v.businessName} doesn't have a website. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `Hey — came across ${v.businessName} online. Wanted to show you what a modern ${v.industry} site could look like: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'ZA':
-    case 'DEFAULT':
-    default:
-      return noWebsite
-        ? `Hey — noticed ${v.businessName} doesn't have a website yet. Here's an example of what one could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `Hey — found ${v.businessName} online. Wanted to show you an example of what a modern site could look like for a ${v.industry} business: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-  }
+function getMessage1(v: TemplateVars): string {
+  return `Hey — had a look at ${v.businessName} online earlier. Noticed you're not really showing up when people in your area search for a ${v.trade} on Google. Is that intentional, or something you've been meaning to sort?`;
 }
 
-function getMessage2(country: Country, variant: Variant, v: TemplateVars): string {
-  const noWebsite = variant === 'NO_WEBSITE';
-  switch (country) {
-    case 'US':
-      return noWebsite
-        ? `${v.industry} businesses in ${v.city} that launched a site last month are averaging 6 extra calls/week from Google. This is the kind of site that does it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `${v.industry} businesses in ${v.city} that refreshed their site last month are averaging 6 extra calls/week from Google. Here's the kind of site that drives it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'UK':
-      return noWebsite
-        ? `${v.industry} businesses in ${v.city} with a proper site are showing up on the first page of Google for local searches. This is the kind of site that gets them there: ${v.demoLink} — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`
-        : `${v.industry} businesses in ${v.city} that updated their site this quarter are showing up on the first page of Google. Here's the kind of site that makes the difference: ${v.demoLink} — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'AU':
-      return noWebsite
-        ? `${v.industry} businesses in ${v.city} that got a site up last month are pulling 5–7 more leads/week from Google. This is the kind of site that does it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `${v.industry} businesses in ${v.city} that refreshed their site last month are pulling 5–7 more leads/week from Google. Here's the kind of site driving that: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'NZ':
-      return noWebsite
-        ? `${v.industry} businesses in ${v.city} that launched a site this year are getting 4–5 more enquiries/week through Google. This is the kind of site that gets them there: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `${v.industry} businesses in ${v.city} that refreshed their site this year are getting 4–5 more enquiries/week through Google. Here's the kind of site making that happen: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'ZA':
-    case 'DEFAULT':
-    default:
-      return noWebsite
-        ? `${v.industry} businesses in ${v.city} that launched a site last month are averaging 6 extra calls/week from Google. This is the kind of site that does it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `${v.industry} businesses in ${v.city} that refreshed their site last month are averaging 6 extra calls/week from Google. Here's the kind of site that drives it: ${v.demoLink} — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-  }
+function getMessage2(v: TemplateVars): string {
+  return `Reason I ask — the ${v.tradePlural} ranking page 1 in your area are pulling in most of the Google job enquiries. Had a thought on what ${v.businessName} could look like if you wanted that same setup. Worth me showing you, or not really your thing?`;
 }
 
-function getMessage3(country: Country, variant: Variant, v: TemplateVars): string {
-  const noWebsite = variant === 'NO_WEBSITE';
-  switch (country) {
-    case 'US':
-      return noWebsite
-        ? `Last one, promise. I'll build ${v.businessName} a free homepage just like this — no catch. Want me to? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `Last one, promise. I'll build ${v.businessName} a free upgraded homepage like this — no catch. Want me to? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'UK':
-      return noWebsite
-        ? `Last message from me. Happy to build ${v.businessName} a free homepage along these lines — no obligation. — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`
-        : `Last message from me. Happy to build ${v.businessName} a free refreshed homepage along these lines — no obligation. — Alistaire, Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'AU':
-      return noWebsite
-        ? `Last one from me. I'll build ${v.businessName} a free homepage like this — no strings. Want it? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `Last one from me. I'll build ${v.businessName} a free upgraded homepage like this — no strings. Want it? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'NZ':
-      return noWebsite
-        ? `Last message from us. Happy to build ${v.businessName} a free homepage like this — no cost, no catch. Just say the word. — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `Last message from us. Happy to build ${v.businessName} a free refreshed homepage like this — no cost, no catch. Just say the word. — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-    case 'ZA':
-    case 'DEFAULT':
-    default:
-      return noWebsite
-        ? `Last one, promise. I'll build ${v.businessName} a free homepage just like this — no catch. Want me to? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`
-        : `Last one, promise. I'll build ${v.businessName} a free upgraded homepage like this — no catch. Want me to? — Alistaire @ Boss Digital Solutions. Reply STOP to opt out.`;
-  }
+function getMessage3(v: TemplateVars): string {
+  return `Went ahead and put together a quick example for ${v.businessName} — have a look if you want: ${v.demoLink}. If it's not for you no worries, I'll leave you to it. Alistaire, Boss Digital`;
 }
 
-// Normalise industry value for use in message templates
-function formatIndustry(industry?: string | null): string {
-  if (!industry) return 'local';
+// Normalise industry to singular trade name
+function formatTrade(industry?: string | null): string {
+  if (!industry) return 'tradesperson';
   return industry.toLowerCase().trim();
+}
+
+// Pluralise a trade name
+function pluraliseTrade(trade: string): string {
+  if (trade.endsWith('s')) return trade;
+  if (trade.endsWith('man')) return trade.slice(0, -3) + 'men';
+  return trade + 's';
 }
 
 // ─── Phone SMS Eligibility (delegates to phoneUtils) ────────────────────────
@@ -174,108 +110,46 @@ export function isUkNonMobile(phone: string | null | undefined): boolean {
 }
 
 // ─── Send Window Logic ──────────────────────────────────────────────────────
+// All sends locked to Europe/London timezone (DST-aware via Intl API).
+// Allowed: Tuesday, Wednesday, Thursday — 18:30 to 20:30 UK local time.
+// Sends are jittered randomly across the 120-minute window.
 
-// Permitted: Tuesday-Thursday, 9:00am-2:00pm recipient local time
-// For simplicity, we use the lead's state/city to approximate timezone.
-// Falls back to a reasonable US timezone assumption.
+const SEND_TZ = 'Europe/London';
 
-const STATE_TIMEZONE: Record<string, string> = {
-  // US Eastern
-  CT: 'America/New_York', DC: 'America/New_York', DE: 'America/New_York',
-  FL: 'America/New_York', GA: 'America/New_York', IN: 'America/Indiana/Indianapolis',
-  KY: 'America/New_York', MA: 'America/New_York', MD: 'America/New_York',
-  ME: 'America/New_York', MI: 'America/Detroit', NC: 'America/New_York',
-  NH: 'America/New_York', NJ: 'America/New_York', NY: 'America/New_York',
-  OH: 'America/New_York', PA: 'America/New_York', RI: 'America/New_York',
-  SC: 'America/New_York', TN: 'America/New_York', VA: 'America/New_York',
-  VT: 'America/New_York', WV: 'America/New_York',
-  // US Central
-  AL: 'America/Chicago', AR: 'America/Chicago', IA: 'America/Chicago',
-  IL: 'America/Chicago', KS: 'America/Chicago', LA: 'America/Chicago',
-  MN: 'America/Chicago', MO: 'America/Chicago', MS: 'America/Chicago',
-  ND: 'America/Chicago', NE: 'America/Chicago', OK: 'America/Chicago',
-  SD: 'America/Chicago', TX: 'America/Chicago', WI: 'America/Chicago',
-  // US Mountain
-  AZ: 'America/Phoenix', CO: 'America/Denver', ID: 'America/Boise',
-  MT: 'America/Denver', NM: 'America/Denver', UT: 'America/Denver',
-  WY: 'America/Denver',
-  // US Pacific
-  CA: 'America/Los_Angeles', NV: 'America/Los_Angeles', OR: 'America/Los_Angeles',
-  WA: 'America/Los_Angeles',
-  // US Other
-  AK: 'America/Anchorage', HI: 'Pacific/Honolulu',
-  // UK
-  ENGLAND: 'Europe/London', SCOTLAND: 'Europe/London', WALES: 'Europe/London',
-  'NORTHERN IRELAND': 'Europe/London', UK: 'Europe/London',
-  'UNITED KINGDOM': 'Europe/London', GB: 'Europe/London', LONDON: 'Europe/London',
-  'GREATER LONDON': 'Europe/London', MANCHESTER: 'Europe/London',
-  BIRMINGHAM: 'Europe/London', LEEDS: 'Europe/London', GLASGOW: 'Europe/London',
-  LIVERPOOL: 'Europe/London', BRISTOL: 'Europe/London', SHEFFIELD: 'Europe/London',
-  EDINBURGH: 'Europe/London', CARDIFF: 'Europe/London', BELFAST: 'Europe/London',
-  // Australia
-  NSW: 'Australia/Sydney', 'NEW SOUTH WALES': 'Australia/Sydney',
-  VIC: 'Australia/Melbourne', VICTORIA: 'Australia/Melbourne',
-  QLD: 'Australia/Brisbane', QUEENSLAND: 'Australia/Brisbane',
-  'WESTERN AUSTRALIA': 'Australia/Perth',
-  SA: 'Australia/Adelaide', 'SOUTH AUSTRALIA': 'Australia/Adelaide',
-  TAS: 'Australia/Hobart', TASMANIA: 'Australia/Hobart',
-  ACT: 'Australia/Sydney', 'AUSTRALIAN CAPITAL TERRITORY': 'Australia/Sydney',
-  NT: 'Australia/Darwin', 'NORTHERN TERRITORY': 'Australia/Darwin',
-  AUSTRALIA: 'Australia/Sydney', AU: 'Australia/Sydney',
-  // New Zealand
-  NZ: 'Pacific/Auckland', 'NEW ZEALAND': 'Pacific/Auckland',
-  AUCKLAND: 'Pacific/Auckland', WELLINGTON: 'Pacific/Auckland',
-  CANTERBURY: 'Pacific/Auckland', OTAGO: 'Pacific/Auckland',
-  WAIKATO: 'Pacific/Auckland', 'BAY OF PLENTY': 'Pacific/Auckland',
-  MANAWATU: 'Pacific/Auckland', NORTHLAND: 'Pacific/Auckland',
-  TARANAKI: 'Pacific/Auckland', 'HAWKES BAY': 'Pacific/Auckland',
-  SOUTHLAND: 'Pacific/Auckland', NELSON: 'Pacific/Auckland',
-  MARLBOROUGH: 'Pacific/Auckland', TASMAN: 'Pacific/Auckland',
-  GISBORNE: 'Pacific/Auckland', 'WEST COAST': 'Pacific/Auckland',
-  // South Africa
-  'WESTERN CAPE': 'Africa/Johannesburg', GAUTENG: 'Africa/Johannesburg',
-  'KWAZULU-NATAL': 'Africa/Johannesburg', 'EASTERN CAPE': 'Africa/Johannesburg',
-  'FREE STATE': 'Africa/Johannesburg', LIMPOPO: 'Africa/Johannesburg',
-  MPUMALANGA: 'Africa/Johannesburg', 'NORTH WEST': 'Africa/Johannesburg',
-  'NORTHERN CAPE': 'Africa/Johannesburg', 'SOUTH AFRICA': 'Africa/Johannesburg',
-  ZA: 'Africa/Johannesburg',
-};
+function getLondonTime(date?: Date): { dayOfWeek: number; hour: number; minute: number } {
+  const d = date || new Date();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SEND_TZ,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
 
-function getTimezone(state?: string | null): string {
-  if (!state) return 'America/New_York'; // sensible default
-  const upper = state.toUpperCase().trim();
-  return STATE_TIMEZONE[upper] || 'America/New_York';
-}
+  const weekday = parts.find(p => p.type === 'weekday')?.value || '';
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+  const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
 
-function getLocalHour(timezone: string): { dayOfWeek: number; hour: number } {
-  const now = new Date();
-  const formatted = now.toLocaleString('en-US', { timeZone: timezone, hour12: false });
-  // formatted = "4/7/2026, 14:30:00"
-  const [datePart, timePart] = formatted.split(', ');
-  const hour = parseInt(timePart.split(':')[0]);
-
-  // Get day of week in recipient timezone
-  const dayStr = now.toLocaleString('en-US', { timeZone: timezone, weekday: 'short' });
   const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  const dayOfWeek = dayMap[dayStr] ?? now.getDay();
+  const dayOfWeek = dayMap[weekday] ?? 0;
 
-  return { dayOfWeek, hour };
+  return { dayOfWeek, hour, minute };
 }
 
-function isInSendWindow(state?: string | null): boolean {
-  const tz = getTimezone(state);
-  const { dayOfWeek, hour } = getLocalHour(tz);
+function isInSendWindow(): boolean {
+  const { dayOfWeek, hour, minute } = getLondonTime();
 
   // Tuesday(2), Wednesday(3), Thursday(4) only
   if (dayOfWeek < 2 || dayOfWeek > 4) return false;
-  // 9:00am - 2:00pm (9 to 13 inclusive, before 14:00)
-  if (hour < 9 || hour >= 14) return false;
+
+  // 18:30 to 20:30
+  const timeMinutes = hour * 60 + minute;
+  if (timeMinutes < 18 * 60 + 30 || timeMinutes >= 20 * 60 + 30) return false;
 
   return true;
 }
 
-function getNextSendWindow(state?: string | null, daysFromNow: number = 0): Date {
-  const tz = getTimezone(state);
+function getNextSendWindow(daysFromNow: number = 0): Date {
   const now = new Date();
 
   // Start from daysFromNow offset
@@ -287,36 +161,40 @@ function getNextSendWindow(state?: string | null, daysFromNow: number = 0): Date
     const test = new Date(candidate);
     test.setDate(test.getDate() + i);
 
-    const dayStr = test.toLocaleString('en-US', { timeZone: tz, weekday: 'short' });
-    const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    const dow = dayMap[dayStr] ?? 0;
+    const { dayOfWeek } = getLondonTime(test);
 
-    if (dow >= 2 && dow <= 4) {
-      // Build 9:00 AM local in that timezone
-      const targetLocal = test.toLocaleString('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-      const [month, day, year] = targetLocal.split('/').map(Number);
-      const localTarget = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T09:00:00`);
+    if (dayOfWeek >= 2 && dayOfWeek <= 4) {
+      // Build 18:30 London time for this date
+      // Get the date string in London timezone
+      const dateParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: SEND_TZ,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(test); // "2026-04-23"
 
-      // Get offset: difference between local interpretation and UTC
-      const sampleUtc = test.getTime();
-      const sampleLocal = new Date(test.toLocaleString('en-US', { timeZone: tz })).getTime();
-      const offsetMs = sampleLocal - sampleUtc;
+      // Create 18:30 in London time by computing the UTC offset
+      const londonNoon = new Date(`${dateParts}T12:00:00Z`);
+      const londonNoonLocal = new Date(londonNoon.toLocaleString('en-US', { timeZone: SEND_TZ }));
+      const offsetMs = londonNoonLocal.getTime() - londonNoon.getTime();
 
-      const utcTarget = new Date(localTarget.getTime() - offsetMs);
+      // 18:30 London = 18:30 local → convert to UTC
+      const local1830 = new Date(`${dateParts}T18:30:00`);
+      const utcTarget = new Date(local1830.getTime() - offsetMs);
 
       // Only return future dates
       if (utcTarget > now) {
-        // Add random 0-300 minutes to spread sends across the 9am-2pm window
-        utcTarget.setMinutes(utcTarget.getMinutes() + Math.floor(Math.random() * 300));
+        // Random jitter: 0–120 minutes across the 18:30–20:30 window
+        utcTarget.setMinutes(utcTarget.getMinutes() + Math.floor(Math.random() * 120));
         return utcTarget;
       }
     }
   }
 
-  // Fallback: next Tuesday at 9am UTC
+  // Fallback: next Tuesday at 18:30 UTC (close enough)
   const fallback = new Date(now);
   fallback.setDate(fallback.getDate() + ((9 - fallback.getDay()) % 7 || 7));
-  fallback.setHours(9, 0, 0, 0);
+  fallback.setHours(18, 30, 0, 0);
   return fallback;
 }
 
@@ -356,19 +234,18 @@ export function generateSequenceMessages(
   lead: SequenceLead,
   demoLink: string
 ): { message1: string; message2: string; message3: string } {
-  const country = classifyCountry(lead.state, lead.address);
-  const variant: Variant = lead.hasWebsite ? 'BAD_WEBSITE' : 'NO_WEBSITE';
+  const trade = formatTrade(lead.industry);
   const v: TemplateVars = {
     businessName: lead.businessName,
-    city: lead.city || 'your area',
-    industry: formatIndustry(lead.industry),
+    trade,
+    tradePlural: pluraliseTrade(trade),
     demoLink,
   };
 
   return {
-    message1: getMessage1(country, variant, v),
-    message2: getMessage2(country, variant, v),
-    message3: getMessage3(country, variant, v),
+    message1: getMessage1(v),
+    message2: getMessage2(v),
+    message3: getMessage3(v),
   };
 }
 
@@ -423,8 +300,8 @@ export async function startSmsSequence(
 
   const messages = generateSequenceMessages(lead, demoLink);
 
-  // Calculate first send time
-  const nextSendAt = isInSendWindow(lead.state) ? new Date() : getNextSendWindow(lead.state);
+  // Calculate first send time (Tue/Wed/Thu 18:30-20:30 Europe/London)
+  const nextSendAt = isInSendWindow() ? new Date() : getNextSendWindow();
 
   const sequence = await prisma.smsSequence.create({
     data: {
@@ -521,10 +398,10 @@ export async function processSmsSequences() {
       for (const seq of sequences) {
         if (remaining <= 0) break;
 
-        // Double-check send window for this lead's timezone
-        if (!isInSendWindow(seq.lead.state)) {
+        // Double-check send window (Tue/Wed/Thu 18:30-20:30 Europe/London)
+        if (!isInSendWindow()) {
           // Reschedule to next window
-          const nextWindow = getNextSendWindow(seq.lead.state);
+          const nextWindow = getNextSendWindow();
           await prisma.smsSequence.update({
             where: { id: seq.id },
             data: { nextSendAt: nextWindow },
@@ -596,13 +473,13 @@ export async function processSmsSequences() {
             stepUpdate.status = 'ACTIVE';
             // Schedule message 2 for Day 3
             stepUpdate.currentStep = 2;
-            stepUpdate.nextSendAt = getNextSendWindow(seq.lead.state, 3);
+            stepUpdate.nextSendAt = getNextSendWindow(3);
           } else if (step === 2) {
             stepUpdate.message2SentAt = now;
             stepUpdate.ghlMessageId2 = ghlMessageId;
-            // Schedule message 3 for Day 10 (7 days after message 2)
+            // Schedule message 3 for Day 7 (4 days after message 2)
             stepUpdate.currentStep = 3;
-            stepUpdate.nextSendAt = getNextSendWindow(seq.lead.state, 7);
+            stepUpdate.nextSendAt = getNextSendWindow(4);
           } else if (step === 3) {
             stepUpdate.message3SentAt = now;
             stepUpdate.ghlMessageId3 = ghlMessageId;
@@ -629,7 +506,7 @@ export async function processSmsSequences() {
         } catch (err) {
           console.error(`SMS sequence send failed for ${seq.lead.businessName}:`, err instanceof Error ? err.message : err);
           // Don't stop the sequence — retry at next window
-          const nextWindow = getNextSendWindow(seq.lead.state);
+          const nextWindow = getNextSendWindow();
           await prisma.smsSequence.update({
             where: { id: seq.id },
             data: { nextSendAt: nextWindow },
