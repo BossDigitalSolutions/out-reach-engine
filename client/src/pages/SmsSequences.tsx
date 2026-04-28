@@ -108,7 +108,7 @@ export default function SmsSequences() {
             <MessageSquare size={24} /> SMS Sequences
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            3-message outreach sequences — Day 0, Day 3, Day 7
+            3-message outreach sequences — Day 0, Day 3, Day 10
           </p>
         </div>
         <button
@@ -206,7 +206,7 @@ export default function SmsSequences() {
                     <span className="text-slate-700">→</span>
                     <StepIndicator step={2} sentAt={seq.message2SentAt} label="Nudge" />
                     <span className="text-slate-700">→</span>
-                    <StepIndicator step={3} sentAt={seq.message3SentAt} label="Gift" />
+                    <StepIndicator step={3} sentAt={seq.message3SentAt} label="Close" />
                   </div>
                   {/* Next send */}
                   {seq.nextSendAt && (seq.status === 'PENDING' || seq.status === 'ACTIVE') && (
@@ -234,9 +234,9 @@ export default function SmsSequences() {
                 <div className="border-t border-slate-800 px-4 py-3 space-y-3 bg-slate-900/50">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {[
-                      { step: 1, label: 'Day 0 — The Observation Hook', msg: seq.message1, sent: seq.message1SentAt },
-                      { step: 2, label: 'Day 3 — The Proof Nudge', msg: seq.message2, sent: seq.message2SentAt },
-                      { step: 3, label: 'Day 7 — The Gift Close', msg: seq.message3, sent: seq.message3SentAt },
+                      { step: 1, label: 'Day 0 — The Hook', msg: seq.message1, sent: seq.message1SentAt },
+                      { step: 2, label: 'Day 3 — The Nudge', msg: seq.message2, sent: seq.message2SentAt },
+                      { step: 3, label: 'Day 10 — The Close', msg: seq.message3, sent: seq.message3SentAt },
                     ].map((m) => (
                       <div key={m.step} className={`rounded-lg border p-3 ${m.sent ? 'border-green-800/40 bg-green-900/10' : seq.currentStep === m.step && (seq.status === 'PENDING' || seq.status === 'ACTIVE') ? 'border-blue-800/40 bg-blue-900/10' : 'border-slate-800 bg-slate-900/30'}`}>
                         <div className="flex items-center justify-between mb-2">

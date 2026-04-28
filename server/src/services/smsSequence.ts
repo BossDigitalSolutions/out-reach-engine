@@ -64,40 +64,30 @@ function classifyCountry(state?: string | null, address?: string | null): Countr
 }
 
 // ─── Message Templates ──────────────────────────────────────────────────────
-// 3-message sequence: Day 0 (Observation Hook), Day 3 (Proof Nudge), Day 7 (Gift Close)
-// Messages 1 and 2 contain NO link. Only Message 3 contains the demo link.
+// 3-message sequence: Day 0 (The Hook), Day 3 (The Nudge), Day 10 (The Close)
 // No "Reply STOP" — GHL appends opt-out language automatically.
 
 interface TemplateVars {
   businessName: string;
   trade: string;      // singular: "plumber", "electrician", "roofer"
-  tradePlural: string; // plural: "plumbers", "electricians", "roofers"
-  demoLink: string;
 }
 
 function getMessage1(v: TemplateVars): string {
-  return `Hey — had a look at ${v.businessName} online earlier. Noticed you're not really showing up when people in your area search for a ${v.trade} on Google. Is that intentional, or something you've been meaning to sort?`;
+  return `Hi ${v.businessName} — noticed you haven't got a website yet. Built a sample site for UK ${v.trade} — want a look?\n— Alistaire, Boss Digital Solutions`;
 }
 
 function getMessage2(v: TemplateVars): string {
-  return `Reason I ask — the ${v.tradePlural} ranking page 1 in your area are pulling in most of the Google job enquiries. Had a thought on what ${v.businessName} could look like if you wanted that same setup. Worth me showing you, or not really your thing?`;
+  return `Forgot to mention — the sample I built for ${v.businessName} is mobile-first, so it'll catch the lads searching from a phone. Worth a quick look?\n— Alistaire`;
 }
 
 function getMessage3(v: TemplateVars): string {
-  return `Went ahead and put together a quick example for ${v.businessName} — have a look if you want: ${v.demoLink}. If it's not for you no worries, I'll leave you to it. Alistaire, Boss Digital`;
+  return `Hi ${v.businessName} — last one from me. Reply anytime if you want a look at that sample ${v.trade} site.\n— Alistaire, Boss Digital Solutions`;
 }
 
 // Normalise industry to singular trade name
 function formatTrade(industry?: string | null): string {
   if (!industry) return 'tradesperson';
   return industry.toLowerCase().trim();
-}
-
-// Pluralise a trade name
-function pluraliseTrade(trade: string): string {
-  if (trade.endsWith('s')) return trade;
-  if (trade.endsWith('man')) return trade.slice(0, -3) + 'men';
-  return trade + 's';
 }
 
 // ─── Phone SMS Eligibility (delegates to phoneUtils) ────────────────────────
@@ -111,8 +101,8 @@ export function isUkNonMobile(phone: string | null | undefined): boolean {
 
 // ─── Send Window Logic ──────────────────────────────────────────────────────
 // All sends locked to Europe/London timezone (DST-aware via Intl API).
-// Allowed: Tuesday, Wednesday, Thursday — 18:30 to 20:30 UK local time.
-// Sends are jittered randomly across the 120-minute window.
+// Allowed: Monday through Thursday — 16:00 to 19:00 UK local time.
+// Sends are jittered randomly across the 180-minute window.
 
 const SEND_TZ = 'Europe/London';
 
@@ -137,14 +127,13 @@ function getLondonTime(date?: Date): { dayOfWeek: number; hour: number; minute: 
 }
 
 function isInSendWindow(): boolean {
-  const { dayOfWeek, hour, minute } = getLondonTime();
+  const { dayOfWeek, hour } = getLondonTime();
 
-  // Tuesday(2), Wednesday(3), Thursday(4) only
-  if (dayOfWeek < 2 || dayOfWeek > 4) return false;
+  // Monday(1), Tuesday(2), Wednesday(3), Thursday(4) only
+  if (dayOfWeek < 1 || dayOfWeek > 4) return false;
 
-  // 18:30 to 20:30
-  const timeMinutes = hour * 60 + minute;
-  if (timeMinutes < 18 * 60 + 30 || timeMinutes >= 20 * 60 + 30) return false;
+  // 16:00 to 19:00
+  if (hour < 16 || hour >= 19) return false;
 
   return true;
 }
@@ -163,9 +152,8 @@ function getNextSendWindow(daysFromNow: number = 0): Date {
 
     const { dayOfWeek } = getLondonTime(test);
 
-    if (dayOfWeek >= 2 && dayOfWeek <= 4) {
-      // Build 18:30 London time for this date
-      // Get the date string in London timezone
+    if (dayOfWeek >= 1 && dayOfWeek <= 4) {
+      // Build 16:00 London time for this date
       const dateParts = new Intl.DateTimeFormat('en-CA', {
         timeZone: SEND_TZ,
         year: 'numeric',
@@ -173,28 +161,29 @@ function getNextSendWindow(daysFromNow: number = 0): Date {
         day: '2-digit',
       }).format(test); // "2026-04-23"
 
-      // Create 18:30 in London time by computing the UTC offset
+      // Compute UTC offset for this date in Europe/London (DST-aware)
       const londonNoon = new Date(`${dateParts}T12:00:00Z`);
       const londonNoonLocal = new Date(londonNoon.toLocaleString('en-US', { timeZone: SEND_TZ }));
       const offsetMs = londonNoonLocal.getTime() - londonNoon.getTime();
 
-      // 18:30 London = 18:30 local → convert to UTC
-      const local1830 = new Date(`${dateParts}T18:30:00`);
-      const utcTarget = new Date(local1830.getTime() - offsetMs);
+      // 16:00 London → convert to UTC
+      const local1600 = new Date(`${dateParts}T16:00:00`);
+      const utcTarget = new Date(local1600.getTime() - offsetMs);
 
       // Only return future dates
       if (utcTarget > now) {
-        // Random jitter: 0–120 minutes across the 18:30–20:30 window
-        utcTarget.setMinutes(utcTarget.getMinutes() + Math.floor(Math.random() * 120));
+        // Random jitter: 0–180 minutes across the 16:00–19:00 window
+        utcTarget.setMinutes(utcTarget.getMinutes() + Math.floor(Math.random() * 180));
         return utcTarget;
       }
     }
   }
 
-  // Fallback: next Tuesday at 18:30 UTC (close enough)
+  // Fallback: next Monday at 16:00 UTC (close enough)
   const fallback = new Date(now);
-  fallback.setDate(fallback.getDate() + ((9 - fallback.getDay()) % 7 || 7));
-  fallback.setHours(18, 30, 0, 0);
+  const daysUntilMon = (8 - fallback.getDay()) % 7 || 7;
+  fallback.setDate(fallback.getDate() + daysUntilMon);
+  fallback.setHours(16, 0, 0, 0);
   return fallback;
 }
 
@@ -232,14 +221,12 @@ interface SequenceLead {
 
 export function generateSequenceMessages(
   lead: SequenceLead,
-  demoLink: string
+  _demoLink: string
 ): { message1: string; message2: string; message3: string } {
   const trade = formatTrade(lead.industry);
   const v: TemplateVars = {
     businessName: lead.businessName,
     trade,
-    tradePlural: pluraliseTrade(trade),
-    demoLink,
   };
 
   return {
@@ -300,7 +287,7 @@ export async function startSmsSequence(
 
   const messages = generateSequenceMessages(lead, demoLink);
 
-  // Calculate first send time (Tue/Wed/Thu 18:30-20:30 Europe/London)
+  // Calculate first send time (Mon-Thu 16:00-19:00 Europe/London)
   const nextSendAt = isInSendWindow() ? new Date() : getNextSendWindow();
 
   const sequence = await prisma.smsSequence.create({
@@ -398,7 +385,7 @@ export async function processSmsSequences() {
       for (const seq of sequences) {
         if (remaining <= 0) break;
 
-        // Double-check send window (Tue/Wed/Thu 18:30-20:30 Europe/London)
+        // Double-check send window (Mon-Thu 16:00-19:00 Europe/London)
         if (!isInSendWindow()) {
           // Reschedule to next window
           const nextWindow = getNextSendWindow();
@@ -477,9 +464,9 @@ export async function processSmsSequences() {
           } else if (step === 2) {
             stepUpdate.message2SentAt = now;
             stepUpdate.ghlMessageId2 = ghlMessageId;
-            // Schedule message 3 for Day 7 (4 days after message 2)
+            // Schedule message 3 for Day 10 (7 days after message 2)
             stepUpdate.currentStep = 3;
-            stepUpdate.nextSendAt = getNextSendWindow(4);
+            stepUpdate.nextSendAt = getNextSendWindow(7);
           } else if (step === 3) {
             stepUpdate.message3SentAt = now;
             stepUpdate.ghlMessageId3 = ghlMessageId;

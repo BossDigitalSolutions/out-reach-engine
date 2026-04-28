@@ -929,7 +929,7 @@ export default function Leads() {
               <div>
                 <h2 className="text-lg font-bold text-white">SMS Sequences Started</h2>
                 <p className="text-sm text-slate-400">
-                  {sequenceResults.started} started, {sequenceResults.failed} failed — Messages send Tue-Thu 18:30-20:30 UK time
+                  {sequenceResults.started} started, {sequenceResults.failed} failed — Messages send Mon-Thu 4-7pm UK time
                 </p>
               </div>
               <button onClick={() => { setShowSequenceModal(false); setSequenceResults(null); }} className="text-slate-400 hover:text-white">
@@ -942,15 +942,15 @@ export default function Leads() {
                   <h3 className="text-sm font-bold text-emerald-400 mb-2">{r.businessName}</h3>
                   <div className="space-y-2">
                     <div>
-                      <span className="text-xs font-semibold text-slate-400">Day 0 — The Observation Hook</span>
+                      <span className="text-xs font-semibold text-slate-400">Day 0 — The Hook</span>
                       <p className="text-xs text-slate-300 mt-0.5 bg-slate-900/50 rounded p-2">{r.message1}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-slate-400">Day 3 — The Proof Nudge</span>
+                      <span className="text-xs font-semibold text-slate-400">Day 3 — The Nudge</span>
                       <p className="text-xs text-slate-300 mt-0.5 bg-slate-900/50 rounded p-2">{r.message2}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-slate-400">Day 7 — The Gift Close</span>
+                      <span className="text-xs font-semibold text-slate-400">Day 10 — The Close</span>
                       <p className="text-xs text-slate-300 mt-0.5 bg-slate-900/50 rounded p-2">{r.message3}</p>
                     </div>
                   </div>
