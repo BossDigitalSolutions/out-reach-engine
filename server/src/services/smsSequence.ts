@@ -69,11 +69,12 @@ function classifyCountry(state?: string | null, address?: string | null): Countr
 
 interface TemplateVars {
   businessName: string;
-  trade: string;      // singular: "plumber", "electrician", "roofer"
+  trade: string;        // singular: "plumber", "electrician", "roofer"
+  tradePlural: string;  // plural: "plumbers", "electricians", "roofers"
 }
 
 function getMessage1(v: TemplateVars): string {
-  return `Hi ${v.businessName} — noticed you haven't got a website yet. Built a sample site for UK ${v.trade} — want a look?\n— Alistaire, Boss Digital Solutions`;
+  return `Hi ${v.businessName} — noticed you haven't got a website yet. Built a sample site for UK ${v.tradePlural} — want a look?\n— Alistaire, Boss Digital Solutions`;
 }
 
 function getMessage2(v: TemplateVars): string {
@@ -81,13 +82,21 @@ function getMessage2(v: TemplateVars): string {
 }
 
 function getMessage3(v: TemplateVars): string {
-  return `Hi ${v.businessName} — last one from me. Reply anytime if you want a look at that sample ${v.trade} site.\n— Alistaire, Boss Digital Solutions`;
+  return `Hi ${v.businessName} — last one from me. Reply anytime if you want a look at that sample ${v.tradePlural} site.\n— Alistaire, Boss Digital Solutions`;
 }
 
 // Normalise industry to singular trade name
 function formatTrade(industry?: string | null): string {
   if (!industry) return 'tradesperson';
   return industry.toLowerCase().trim();
+}
+
+// Pluralise a trade name — if already plural, leave as-is
+function pluraliseTrade(trade: string): string {
+  if (!trade || trade === 'tradesperson') return 'tradesmen';
+  if (trade.endsWith('s')) return trade; // already plural
+  if (trade.endsWith('man')) return trade.slice(0, -3) + 'men';
+  return trade + 's';
 }
 
 // ─── Phone SMS Eligibility (delegates to phoneUtils) ────────────────────────
@@ -227,6 +236,7 @@ export function generateSequenceMessages(
   const v: TemplateVars = {
     businessName: lead.businessName,
     trade,
+    tradePlural: pluraliseTrade(trade),
   };
 
   return {
