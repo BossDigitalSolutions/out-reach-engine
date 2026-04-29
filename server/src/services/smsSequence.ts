@@ -197,19 +197,14 @@ function getNextSendWindow(daysFromNow: number = 0): Date {
 }
 
 // ─── SMS Volume Limits ──────────────────────────────────────────────────────
-// Warmup: 50 → 150 → 300 → 500/day over 4 weeks
+// Daily cap configurable via env var DAILY_SMS_LIMIT (default 150).
+// Bump to 250 or 500 when GHL A2P trust tier increases — no code change needed.
+// The DB field smsDailyLimit acts as a per-user override if set lower.
 
-function getSmsLimit(settings: { smsWarmupStartDate: Date | null; smsDailyLimit: number }): number {
-  if (!settings.smsWarmupStartDate) return settings.smsDailyLimit;
+const ENV_DAILY_SMS_LIMIT = parseInt(process.env.DAILY_SMS_LIMIT || '150', 10);
 
-  const daysSinceStart = Math.floor(
-    (Date.now() - settings.smsWarmupStartDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
-
-  if (daysSinceStart < 7) return Math.min(50, settings.smsDailyLimit);
-  if (daysSinceStart < 14) return Math.min(150, settings.smsDailyLimit);
-  if (daysSinceStart < 21) return Math.min(300, settings.smsDailyLimit);
-  return Math.min(500, settings.smsDailyLimit);
+function getSmsLimit(settings: { smsDailyLimit: number }): number {
+  return Math.min(settings.smsDailyLimit, ENV_DAILY_SMS_LIMIT);
 }
 
 // ─── Core: Generate messages for a sequence ─────────────────────────────────

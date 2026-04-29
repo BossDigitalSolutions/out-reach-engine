@@ -41,6 +41,7 @@ interface Settings {
   senderEmail?: string;
   emailSignature?: string;
   dailySendLimit: number;
+  smsDailyLimit?: number;
   unsubscribeUrl?: string;
   warmupMode: boolean;
   warmupDay: number;
@@ -86,6 +87,7 @@ export default function Settings() {
     senderEmail: '',
     emailSignature: '',
     dailySendLimit: 30,
+    smsDailyLimit: 150,
     unsubscribeUrl: '',
     warmupMode: false,
     followupsEnabled: true,
@@ -126,6 +128,7 @@ export default function Settings() {
         senderEmail: settings.senderEmail || '',
         emailSignature: settings.emailSignature || '',
         dailySendLimit: settings.dailySendLimit || 30,
+        smsDailyLimit: settings.smsDailyLimit || 150,
         unsubscribeUrl: settings.unsubscribeUrl || '',
         warmupMode: settings.warmupMode || false,
         followupsEnabled: settings.followupsEnabled ?? true,
@@ -220,6 +223,7 @@ export default function Settings() {
       senderName: form.senderName,
       emailSignature: form.emailSignature,
       dailySendLimit: form.dailySendLimit,
+      smsDailyLimit: form.smsDailyLimit,
       unsubscribeUrl: form.unsubscribeUrl,
       warmupMode: form.warmupMode,
       followupsEnabled: form.followupsEnabled,
@@ -469,6 +473,21 @@ export default function Settings() {
               onChange={(e) => setForm((f) => ({ ...f, dailySendLimit: Number(e.target.value) }))}
             />
             <span className="text-sm text-slate-400">emails per day</span>
+          </div>
+        </div>
+
+        <div>
+          <label className="label">SMS Daily Limit</label>
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              className="input w-24"
+              min={1}
+              max={500}
+              value={form.smsDailyLimit}
+              onChange={(e) => setForm((f) => ({ ...f, smsDailyLimit: Number(e.target.value) }))}
+            />
+            <span className="text-sm text-slate-400">SMS per day (GHL tier: 50 → 250 → 500)</span>
           </div>
         </div>
 

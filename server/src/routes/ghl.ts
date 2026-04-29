@@ -476,7 +476,7 @@ router.get('/sms-sequence/status', async (req: AuthRequest, res: Response) => {
       where,
       include: { lead: { select: { businessName: true, ownerName: true, phone: true, industry: true, city: true } } },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: 300,
     });
 
     res.json({ sequences });

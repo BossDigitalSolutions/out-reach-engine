@@ -95,7 +95,7 @@ model Settings {
   ghlPhoneNumberUS   String?
   ghlPhoneNumberZA   String?
   smsWarmupStartDate DateTime?
-  smsDailyLimit      Int     @default(50)
+  smsDailyLimit      Int     @default(150)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

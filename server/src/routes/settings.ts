@@ -40,6 +40,7 @@ const settingsSchema = z.object({
   senderName: z.string().optional(),
   emailSignature: z.string().optional(),
   dailySendLimit: z.number().min(1).max(500).optional(),
+  smsDailyLimit: z.number().min(1).max(500).optional(),
   unsubscribeUrl: z.string().url().optional().or(z.literal('')),
   warmupMode: z.boolean().optional(),
   followupsEnabled: z.boolean().optional(),
