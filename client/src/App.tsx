@@ -13,6 +13,7 @@ import Team from './pages/Team';
 import ActivityLog from './pages/ActivityLog';
 import Schedule from './pages/Schedule';
 import SmsSequences from './pages/SmsSequences';
+import DebugEnrichment from './pages/DebugEnrichment';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -82,6 +83,14 @@ function AppRoutes() {
                   element={
                     <AdminRoute>
                       <ActivityLog />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/debug-enrichment"
+                  element={
+                    <AdminRoute>
+                      <DebugEnrichment />
                     </AdminRoute>
                   }
                 />

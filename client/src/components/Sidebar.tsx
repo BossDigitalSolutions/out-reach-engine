@@ -15,6 +15,7 @@ import {
   Shield,
   CalendarClock,
   MessageSquare,
+  Bug,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -33,6 +34,7 @@ const adminNavItems = [
   { to: '/settings', icon: Settings, label: 'Settings' },
   { to: '/team', icon: UserCog, label: 'Team' },
   { to: '/activity-log', icon: ScrollText, label: 'Activity Log' },
+  { to: '/admin/debug-enrichment', icon: Bug, label: 'Debug Enrichment' },
 ];
 
 export default function Sidebar({ onClose }: { onClose?: () => void }) {

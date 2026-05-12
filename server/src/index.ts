@@ -18,6 +18,7 @@ import teamRoutes from './routes/team';
 import activityLogRoutes from './routes/activityLog';
 import sessionsRoutes from './routes/sessions';
 import twoFactorRoutes from './routes/twoFactor';
+import debugRoutes from './routes/debug';
 import { startScheduler } from './services/scheduler';
 
 dotenv.config();
@@ -97,6 +98,7 @@ app.use('/api/team', teamRoutes);
 app.use('/api/activity-log', activityLogRoutes);
 app.use('/api/sessions', sessionsRoutes);
 app.use('/api/2fa', twoFactorRoutes);
+app.use('/api/debug', debugRoutes);
 
 // Unsubscribe route (public)
 app.get('/unsubscribe/:token', async (req, res) => {
