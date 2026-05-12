@@ -8,6 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../index';
 import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth';
 import { decryptField } from '../services/encryption';
+import { MED_SPA_EXTRACTION_SYSTEM_PROMPT } from '../services/medSpaEnrichment';
 
 const router = Router();
 router.use(authenticate);
@@ -130,25 +131,13 @@ router.post('/enrichment', async (req: AuthRequest, res: Response) => {
     }
 
     // ─── Step 2: Build Claude prompt ─────────────────────────────────────
-    const systemPrompt =
-      'You are extracting lead data from a med spa website. Output ONLY valid JSON matching the schema. If a field cannot be confidently determined from the content, use null. Do not invent data.';
-
-    const userPrompt = `Schema:
-{
-  "email": "primary contact email (info@, hello@, contact@, or an owner's direct email if listed). Null if no email visible.",
-  "clinic_name": "the trading name of the med spa, as it appears in the site header or footer",
-  "owner_name": "first name only of the owner or lead practitioner, if clearly identifiable on About page or homepage. Null if not clear.",
-  "signature_treatment": "the most prominently featured specific treatment (e.g. 'Profhilo', 'Morpheus8', 'Polynucleotides', 'CoolSculpting'). Must be a specific named treatment, NOT a generic category like 'injectables', 'skincare', 'facials', or 'body contouring'. Pick based on homepage prominence, repetition across pages, and dedicated service pages. Null if no single specific treatment clearly dominates.",
-  "location_city": "city or town where the clinic is located, from contact page, footer, or homepage",
-  "instagram_handle": "Instagram username without the @, from social links. Null if no Instagram link found."
-}
-
-Website URL: ${url}
+    // Use the same system prompt as the production enrichment service so
+    // debug results match exactly what real enrichment would produce.
+    const systemPrompt = MED_SPA_EXTRACTION_SYSTEM_PROMPT;
+    const userPrompt = `Website URL: ${url}
 
 Website content:
-${markdown}
-
-Output only the JSON object. No commentary, no markdown code fences.`;
+${markdown}`;
 
     result.claude_prompt = {
       system: systemPrompt,

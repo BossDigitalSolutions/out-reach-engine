@@ -10,7 +10,92 @@ export type EnrichmentStatus =
   | 'no_website'
   | 'scrape_failed'
   | 'parse_failed'
-  | 'no_email';
+  | 'no_email'
+  | 'not_qualified';
+
+// ─── Claude system prompt for med spa qualification + extraction ────────────
+// Exported so the debug endpoint reuses the exact same prompt.
+
+export const MED_SPA_EXTRACTION_SYSTEM_PROMPT = `You are extracting structured data from a business's website to determine if it qualifies as a medical spa (med spa) for a B2B marketing campaign. Output ONLY valid JSON. No markdown code fences, no commentary, no explanatory text.
+
+DEFINITION OF A QUALIFIED MED SPA
+
+A business qualifies as a med spa ONLY if its website explicitly mentions, by name, at least one treatment from this list:
+
+INJECTABLES:
+- Botulinum toxin / anti-wrinkle injections (Botox, Bocouture, Azzalure, Dysport, Xeomin, Nuceiva)
+- Dermal filler — including any of: lip filler, cheek filler, chin filler, jawline filler, tear trough filler, nasolabial fold filler, non-surgical rhinoplasty, hand rejuvenation filler, branded fillers like Juvéderm, Restylane, Teosyal, Belotero
+- Profhilo
+- Polynucleotides (Lumi Eyes, PhilArt, Plinest, Nucleofill)
+- Skin boosters (Volite, Restylane Vital, Sunekos, Profhilo Body)
+- Biostimulators (Sculptra, Radiesse, Ellansé, Lanluma)
+- Sclerotherapy (vein treatment via injection)
+
+ENERGY-BASED OR DEVICE TREATMENTS:
+- Morpheus8
+- Sofwave
+- HIFU / Ultherapy
+- RF microneedling (Morpheus8, Genius RF, Secret RF, Vivace, Potenza)
+- Laser resurfacing (Fraxel, CO2 laser, erbium laser)
+- IPL (intense pulsed light) for pigmentation, vascular, photofacial
+- CoolSculpting / cryolipolysis
+- Emsculpt / EMSculpt NEO
+- Laser hair removal (only counts if combined with other med spa treatments — alone it does NOT qualify)
+
+OTHER MEDICAL AESTHETIC PROCEDURES:
+- PRP / platelet-rich plasma / "vampire facial"
+- PDO threads / thread lift / non-surgical facelift
+- Medical-grade chemical peels (TCA, jessner, phenol — NOT simple glycolic or basic enzyme peels)
+- Microneedling / collagen induction therapy (only when offered by medical practitioners)
+- Hyperhidrosis treatment (Botox for sweating)
+- Medical weight loss injectables (GLP-1, semaglutide, Mounjaro, Ozempic for weight management)
+- Hair restoration (PRP for hair loss, prescription minoxidil, finasteride consultations)
+- Acne scarring treatments via laser, microneedling, or peels
+
+DEFINITION OF NOT-A-MED-SPA
+
+A business does NOT qualify as a med spa if it ONLY offers any combination of:
+- Massages of any kind (Swedish, deep tissue, hot stone, Thai, sports, lymphatic, prenatal)
+- Standard facials, "luxury" facials, "advanced" facials without naming specific medical brands or active devices
+- Manicures, pedicures, nail extensions, gel nails
+- Eyelash extensions, lash lifts, brow lamination, brow tinting, brow shaping
+- Hair cuts, colouring, styling, blow-dries, hair extensions
+- Sauna, steam room, hot tub, ice plunge, hammam
+- Yoga, pilates, meditation, breathwork
+- Hotel-style "wellness" or "relaxation" packages or "spa days"
+- Tanning (spray or UV)
+- Reiki, reflexology, holistic therapies, energy work, crystal healing
+- Waxing, threading, hair removal (without laser)
+- Standard body wraps, scrubs, exfoliation (without medical components)
+- Makeup application, bridal makeup, special occasion services
+
+KEY DISAMBIGUATION RULES
+
+1. A hotel spa offering "luxury facials" and "wellness packages" is NOT a med spa, even if it uses words like "advanced," "rejuvenating," or "anti-ageing." Without a named injectable or medical device treatment, it doesn't qualify.
+
+2. A beauty salon that adds Botox or filler to its menu IS a med spa, even if the rest of its services are non-medical. Presence of any qualifying treatment overrides the salon classification.
+
+3. A medical aesthetic clinic that ALSO offers massage or facials is still a med spa. The qualifying treatments determine the classification.
+
+4. If the site is sparse, generic, or you can't determine treatments clearly, default business_type to "other" and is_qualified_med_spa to false. Do not guess.
+
+5. Med spas can operate inside hotels, gyms, or department stores. The location is irrelevant — only the treatment menu matters.
+
+JSON SCHEMA TO RETURN
+
+{
+  "email": "string | null — primary contact email visible on the site (info@, hello@, contact@, or an owner's direct email). Null if no email is visible.",
+  "clinic_name": "string — trading name of the business as shown in header or footer",
+  "owner_name": "string | null — first name only of the owner or lead practitioner, only if clearly identified on About page or homepage",
+  "location_city": "string | null — city or town the business is located in",
+  "instagram_handle": "string | null — Instagram username without the @ symbol",
+  "business_type": "one of: 'med_spa', 'hotel_spa', 'day_spa', 'hair_salon', 'nail_salon', 'beauty_salon', 'wellness_centre', 'fitness_centre_with_spa', 'massage_clinic', 'tanning_salon', 'other'",
+  "is_qualified_med_spa": "boolean — true ONLY if business_type is 'med_spa' AND at least one named qualifying treatment from the list above appears on the site",
+  "signature_treatment": "string | null — populate ONLY if is_qualified_med_spa is true. Use the exact named treatment that is most prominently featured (homepage hero, dedicated service page, or repeated mentions across the site). Use exact branded names like 'Profhilo' or 'Morpheus8', not generic categories like 'injectables' or 'skincare'. Null if no single treatment clearly dominates, or if business is not qualified.",
+  "qualifying_treatments_found": "array of strings — list every named qualifying treatment found on the site. Empty array if none. This helps with auditing."
+}
+
+Output ONLY the JSON object. No commentary before or after. No code fences.`;
 
 interface ExtractedFields {
   email: string | null;
@@ -19,6 +104,9 @@ interface ExtractedFields {
   signature_treatment: string | null;
   location_city: string | null;
   instagram_handle: string | null;
+  business_type: string | null;
+  is_qualified_med_spa: boolean | null;
+  qualifying_treatments_found: string[] | null;
 }
 
 interface EnrichmentLead {
@@ -37,25 +125,11 @@ async function extractMedSpaFields(
 ): Promise<ExtractedFields | null> {
   const client = new Anthropic({ apiKey: anthropicApiKey });
 
-  const systemPrompt =
-    'You are extracting lead data from a med spa website. Output ONLY valid JSON matching the schema. If a field cannot be confidently determined from the content, use null. Do not invent data.';
-
-  const userPrompt = `Schema:
-{
-  "email": "primary contact email (info@, hello@, contact@, or an owner's direct email if listed). Null if no email visible.",
-  "clinic_name": "the trading name of the med spa, as it appears in the site header or footer",
-  "owner_name": "first name only of the owner or lead practitioner, if clearly identifiable on About page or homepage. Null if not clear.",
-  "signature_treatment": "the most prominently featured specific treatment (e.g. 'Profhilo', 'Morpheus8', 'Polynucleotides', 'CoolSculpting'). Must be a specific named treatment, NOT a generic category like 'injectables', 'skincare', 'facials', or 'body contouring'. Pick based on homepage prominence, repetition across pages, and dedicated service pages. Null if no single specific treatment clearly dominates.",
-  "location_city": "city or town where the clinic is located, from contact page, footer, or homepage",
-  "instagram_handle": "Instagram username without the @, from social links. Null if no Instagram link found."
-}
-
-Website URL: ${url}
+  const systemPrompt = MED_SPA_EXTRACTION_SYSTEM_PROMPT;
+  const userPrompt = `Website URL: ${url}
 
 Website content:
-${markdown}
-
-Output only the JSON object. No commentary, no markdown code fences.`;
+${markdown}`;
 
   const message = await client.messages.create({
     model: 'claude-opus-4-7',
@@ -131,8 +205,14 @@ export async function enrichMedSpaLead(
   const emailFromSite = isValidEmail(extracted.email) ? extracted.email : null;
   const finalEmail = emailFromSite || lead.email;
 
-  // If no email anywhere → mark no_email but still save the other extracted data
-  const status: EnrichmentStatus = finalEmail ? 'enriched' : 'no_email';
+  // Qualification check — must be a real med spa to be enriched for the campaign
+  const isQualified = extracted.is_qualified_med_spa === true;
+
+  // Status: not_qualified > no_email > enriched
+  let status: EnrichmentStatus;
+  if (!isQualified) status = 'not_qualified';
+  else if (!finalEmail) status = 'no_email';
+  else status = 'enriched';
 
   const updateData: Record<string, unknown> = {
     enrichmentStatus: status,
@@ -142,6 +222,9 @@ export async function enrichMedSpaLead(
     instagramHandle: extracted.instagram_handle,
     emailFromSite,
     locationCity: extracted.location_city,
+    businessType: extracted.business_type,
+    isQualifiedMedSpa: isQualified,
+    qualifyingTreatmentsFound: extracted.qualifying_treatments_found ?? [],
   };
 
   // If we found an email from the site and the lead didn't have one, populate lead.email too
@@ -172,6 +255,7 @@ export interface BatchSummary {
   no_website: number;
   scrape_failed: number;
   parse_failed: number;
+  not_qualified: number;
   results: EnrichmentResult[];
 }
 
@@ -207,6 +291,7 @@ export async function enrichMedSpaLeads(
     no_website: 0,
     scrape_failed: 0,
     parse_failed: 0,
+    not_qualified: 0,
     results,
   };
 
@@ -231,6 +316,9 @@ export async function enrichMedSpaLeads(
           break;
         case 'parse_failed':
           summary.parse_failed++;
+          break;
+        case 'not_qualified':
+          summary.not_qualified++;
           break;
       }
     } catch (err) {

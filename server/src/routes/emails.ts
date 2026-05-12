@@ -120,6 +120,24 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
     for (const lead of leads) {
       // ─── FORK: Med Spa leads use locked templates, NO AI ───────────────
       if (isMedSpaIndustry(lead.industry)) {
+        // Qualification gate — only send to confirmed med spas (must be enriched first)
+        if (lead.isQualifiedMedSpa === false) {
+          skipped.push({
+            leadId: lead.id,
+            businessName: lead.businessName,
+            reason: `not_qualified (business_type: ${lead.businessType || 'unknown'})`,
+          });
+          continue;
+        }
+        if (lead.isQualifiedMedSpa == null) {
+          skipped.push({
+            leadId: lead.id,
+            businessName: lead.businessName,
+            reason: 'not_enriched — run Enrich Med Spa first',
+          });
+          continue;
+        }
+
         const result = generateMedSpaSequence({
           businessName: lead.businessName,
           email: lead.email,

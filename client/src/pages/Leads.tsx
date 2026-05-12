@@ -63,6 +63,11 @@ interface Lead {
   ghlContactId?: string | null;
   customDemoLink?: string | null;
   phoneMobile?: boolean | null;
+  businessType?: string | null;
+  isQualifiedMedSpa?: boolean | null;
+  qualifyingTreatmentsFound?: string[] | null;
+  signatureTreatment?: string | null;
+  enrichmentStatus?: string | null;
   createdAt: string;
   _count: { emails: number; notes: number };
 }
@@ -718,7 +723,7 @@ export default function Leads() {
                     </td>
                     <td className="table-cell">
                       <div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <p className="font-medium text-slate-200">{lead.businessName}</p>
                           {lead.ghlContactId && (
                             <span
@@ -726,6 +731,22 @@ export default function Leads() {
                               className="inline-flex items-center justify-center w-4 h-4 rounded bg-orange-500/80 flex-shrink-0"
                             >
                               <span className="text-white font-bold leading-none" style={{ fontSize: 9 }}>G</span>
+                            </span>
+                          )}
+                          {lead.isQualifiedMedSpa === true && (
+                            <span
+                              title={`Qualified med spa — treatments: ${(lead.qualifyingTreatmentsFound || []).join(', ') || 'none'}`}
+                              className="text-xs font-semibold rounded bg-pink-900/40 text-pink-300 border border-pink-800/50 px-1.5 py-0.5"
+                            >
+                              💉 Med Spa
+                            </span>
+                          )}
+                          {lead.isQualifiedMedSpa === false && lead.businessType && (
+                            <span
+                              title={`Not a qualified med spa — classified as ${lead.businessType}`}
+                              className="text-xs font-semibold rounded bg-slate-800 text-slate-400 border border-slate-700 px-1.5 py-0.5"
+                            >
+                              {lead.businessType.replace(/_/g, ' ')}
                             </span>
                           )}
                         </div>

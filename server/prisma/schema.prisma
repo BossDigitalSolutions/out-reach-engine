@@ -135,6 +135,9 @@ model Lead {
   instagramHandle    String?
   emailFromSite      String?
   locationCity       String?
+  businessType       String?
+  isQualifiedMedSpa  Boolean?
+  qualifyingTreatmentsFound Json?
   enrichmentStatus   String?
   enrichmentRunAt    DateTime?
   createdAt        DateTime   @default(now())
