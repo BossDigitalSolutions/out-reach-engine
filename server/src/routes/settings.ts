@@ -17,6 +17,7 @@ const ADMIN_ONLY_FIELDS = [
   'whatsAppPhoneId',
   'whatsAppToken',
   'ghlApiKey',
+  'firecrawlApiKey',
   'ghlLocationId',
   'ghlPhoneNumber',
   'ghlPhoneNumberUS',
@@ -28,6 +29,7 @@ const settingsSchema = z.object({
   googleApiKey: z.string().optional(),
   anthropicApiKey: z.string().optional(),
   sendgridApiKey: z.string().optional(),
+  firecrawlApiKey: z.string().optional(),
   whatsAppPhoneId: z.string().optional(),
   whatsAppToken: z.string().optional(),
   ghlApiKey: z.string().optional(),
@@ -61,6 +63,7 @@ export async function getDecryptedSettings(userId: string) {
     sendgridApiKey: decryptField(settings.sendgridApiKey),
     whatsAppToken: decryptField(settings.whatsAppToken),
     ghlApiKey: decryptField(settings.ghlApiKey),
+    firecrawlApiKey: decryptField((settings as Record<string, unknown>).firecrawlApiKey as string | null | undefined),
   };
 }
 
@@ -77,6 +80,7 @@ function maskApiKeys(settings: Record<string, unknown>, isAdmin: boolean) {
     base.hasSendgridApiKey = false;
     base.hasWhatsAppToken = false;
     base.hasGhlApiKey = false;
+    base.hasFirecrawlApiKey = false;
     return base;
   }
 
@@ -87,11 +91,13 @@ function maskApiKeys(settings: Record<string, unknown>, isAdmin: boolean) {
     sendgridApiKey: settings.sendgridApiKey ? '••••••••' : null,
     whatsAppToken: settings.whatsAppToken ? '••••••••' : null,
     ghlApiKey: settings.ghlApiKey ? '••••••••' : null,
+    firecrawlApiKey: settings.firecrawlApiKey ? '••••••••' : null,
     hasGoogleApiKey: !!settings.googleApiKey,
     hasAnthropicApiKey: !!settings.anthropicApiKey,
     hasSendgridApiKey: !!settings.sendgridApiKey,
     hasWhatsAppToken: !!settings.whatsAppToken,
     hasGhlApiKey: !!settings.ghlApiKey,
+    hasFirecrawlApiKey: !!settings.firecrawlApiKey,
   };
 }
 
@@ -141,7 +147,7 @@ router.put('/', async (req: AuthRequest, res: Response) => {
     for (const [k, v] of Object.entries(data)) {
       if (v === '' || v === undefined) continue;
       // Encrypt API key fields
-      if (ADMIN_ONLY_FIELDS.slice(0, 7).includes(k) && typeof v === 'string') {
+      if (ADMIN_ONLY_FIELDS.slice(0, 8).includes(k) && typeof v === 'string') {
         clean[k] = encryptField(v);
       } else {
         clean[k] = v;

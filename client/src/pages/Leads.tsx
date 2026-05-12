@@ -275,6 +275,31 @@ export default function Leads() {
     },
   });
 
+  const enrichMedSpaMutation = useMutation({
+    mutationFn: () =>
+      leadsApi.enrichMedSpa(Array.from(selected)).then((r) => r.data),
+    onSuccess: (data: {
+      total_processed: number;
+      enriched_successfully: number;
+      queued_for_send: number;
+      no_email: number;
+      no_website: number;
+      scrape_failed: number;
+      parse_failed: number;
+    }) => {
+      toast.success(
+        `Enriched ${data.enriched_successfully}/${data.total_processed} · ${data.queued_for_send} ready to send · ${data.no_email} no email · ${data.scrape_failed + data.parse_failed} failed`,
+        { duration: 8000 }
+      );
+      qc.invalidateQueries({ queryKey: ['leads'] });
+    },
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { error?: string } }; message?: string };
+      const msg = axiosErr?.response?.data?.error || axiosErr?.message || 'Med spa enrichment failed';
+      toast.error(msg);
+    },
+  });
+
   const saveEmailMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       emailsApi.update(id, data),
@@ -481,6 +506,24 @@ export default function Leads() {
                   <span className="text-white font-bold text-xs leading-none" style={{ fontSize: 9 }}>G</span>
                 </div>
                 Sync to GHL ({selected.size})
+              </button>
+              <button
+                className="flex items-center gap-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                onClick={() => enrichMedSpaMutation.mutate()}
+                disabled={enrichMedSpaMutation.isPending}
+                title="Scrape websites + extract med spa data via Firecrawl + Claude"
+              >
+                {enrichMedSpaMutation.isPending ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Enriching...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    Enrich Med Spa ({selected.size})
+                  </>
+                )}
               </button>
               <button
                 className="btn-danger flex items-center gap-1"

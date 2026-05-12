@@ -34,6 +34,7 @@ const INDUSTRY_LIST = [
   { key: 'contractors', label: 'Contractors' },
   { key: 'real_estate', label: 'Real Estate' },
   { key: 'auto_repair', label: 'Auto Repair' },
+  { key: 'med_spa', label: 'Med Spa / Spa' },
 ];
 
 interface Settings {
@@ -53,6 +54,7 @@ interface Settings {
   hasGoogleApiKey: boolean;
   hasAnthropicApiKey: boolean;
   hasSendgridApiKey: boolean;
+  hasFirecrawlApiKey: boolean;
   hasWhatsAppToken: boolean;
   whatsAppPhoneId?: string;
   hasGhlApiKey: boolean;
@@ -66,6 +68,7 @@ const API_KEY_FIELDS = [
   { key: 'googleApiKey', label: 'Google Places API Key', placeholder: 'AIza...' },
   { key: 'anthropicApiKey', label: 'Anthropic (Claude) API Key', placeholder: 'sk-ant-...' },
   { key: 'sendgridApiKey', label: 'SendGrid API Key', placeholder: 'SG...' },
+  { key: 'firecrawlApiKey', label: 'Firecrawl API Key', placeholder: 'fc-...' },
 ];
 
 export default function Settings() {

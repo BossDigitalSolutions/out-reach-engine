@@ -6,6 +6,7 @@ import { LeadStatus } from '@prisma/client';
 import { calculateScore } from '../services/scoring';
 import { scrapeWebsite } from '../services/websiteScraper';
 import { normalizePhone, isSmsEligible } from '../services/phoneUtils';
+import { enrichMedSpaLeads } from '../services/medSpaEnrichment';
 
 const router = Router();
 router.use(authenticate);
@@ -311,6 +312,21 @@ router.post('/:id/notes', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: err.errors[0].message });
     }
     res.status(500).json({ error: 'Failed to add note' });
+  }
+});
+
+// POST /api/leads/enrich-medspa — enrich selected leads via Firecrawl + Claude
+router.post('/enrich-medspa', async (req: AuthRequest, res: Response) => {
+  try {
+    const { leadIds } = z.object({ leadIds: z.array(z.string()).min(1).max(100) }).parse(req.body);
+    const summary = await enrichMedSpaLeads(req.user!.userId, leadIds);
+    res.json(summary);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: err.errors[0].message });
+    }
+    const message = err instanceof Error ? err.message : 'Enrichment failed';
+    res.status(500).json({ error: message });
   }
 });
 

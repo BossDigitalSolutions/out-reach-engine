@@ -50,6 +50,7 @@ export const leadsApi = {
   addNote: (id: string, content: string) =>
     api.post(`/leads/${id}/notes`, { content }),
   enrich: (id: string) => api.post(`/leads/${id}/enrich`),
+  enrichMedSpa: (leadIds: string[]) => api.post('/leads/enrich-medspa', { leadIds }),
 };
 
 // Scraper

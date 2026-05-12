@@ -94,6 +94,7 @@ model Settings {
   ghlPhoneNumber     String?
   ghlPhoneNumberUS   String?
   ghlPhoneNumberZA   String?
+  firecrawlApiKey    String?
   smsWarmupStartDate DateTime?
   smsDailyLimit      Int     @default(150)
 
@@ -129,6 +130,13 @@ model Lead {
   websiteData      Json?
   websiteScore     Int?
   unsubscribed     Boolean    @default(false)
+  signatureTreatment String?
+  ownerFirstName     String?
+  instagramHandle    String?
+  emailFromSite      String?
+  locationCity       String?
+  enrichmentStatus   String?
+  enrichmentRunAt    DateTime?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 

@@ -95,6 +95,7 @@ export const INDUSTRIES = [
   'Pet Grooming',
   'Yoga Studio',
   'Spa',
+  'Med Spa',
   'Photography',
   'Florist',
   'Bakery',

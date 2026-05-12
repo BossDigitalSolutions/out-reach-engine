@@ -12,6 +12,9 @@ const DEFAULT_INDUSTRY_WEIGHTS: Record<string, number> = {
   'real estate': 15,
   'auto repair': 20,
   'auto': 20,
+  'med spa': 25,
+  'spa': 25,
+  'medspa': 25,
 };
 
 function normalizeIndustry(industry: string): string {
