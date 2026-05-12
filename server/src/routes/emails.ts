@@ -8,6 +8,7 @@ import { sendEmail } from '../services/sendgrid';
 import { decryptField } from '../services/encryption';
 import { logActivity } from '../services/activityLogger';
 import { syncContactToGhl, sendGhlMessage } from '../services/ghl';
+import { isMedSpaIndustry, generateMedSpaSequence } from '../services/medSpaTemplates';
 
 const router = Router();
 
@@ -92,16 +93,18 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
       where: { userId: req.user!.userId },
     });
 
+    const leads = await prisma.lead.findMany({
+      where: { id: { in: leadIds }, userId: req.user!.userId },
+    });
+
+    // Detect if this batch contains any non-med-spa leads needing AI generation
+    const needsAi = leads.some((l) => !isMedSpaIndustry(l.industry));
     const apiKey = decryptField(settings?.anthropicApiKey) || process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (needsAi && !apiKey) {
       return res.status(400).json({
         error: 'Anthropic API key not configured. Add it in Settings.',
       });
     }
-
-    const leads = await prisma.lead.findMany({
-      where: { id: { in: leadIds }, userId: req.user!.userId },
-    });
 
     const demoLinks = await prisma.demoLink.findMany({
       where: { userId: req.user!.userId },
@@ -111,9 +114,65 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
       where: { userId: req.user!.userId },
     });
 
-    const generated = [];
+    const generated: Array<Record<string, unknown>> = [];
+    const skipped: Array<{ leadId: string; businessName: string; reason: string }> = [];
 
     for (const lead of leads) {
+      // ─── FORK: Med Spa leads use locked templates, NO AI ───────────────
+      if (isMedSpaIndustry(lead.industry)) {
+        const result = generateMedSpaSequence({
+          businessName: lead.businessName,
+          email: lead.email,
+          emailFromSite: lead.emailFromSite,
+          signatureTreatment: lead.signatureTreatment,
+        });
+        if (!result.ok) {
+          skipped.push({ leadId: lead.id, businessName: lead.businessName, reason: result.reason });
+          continue;
+        }
+
+        // Create 3 DRAFT emails with scheduledAt populated
+        const createdSequence: Array<Record<string, unknown>> = [];
+        for (const draft of result.emails) {
+          const unsubscribeToken = crypto.randomBytes(32).toString('hex');
+          const email = await prisma.email.create({
+            data: {
+              userId: req.user!.userId,
+              leadId: lead.id,
+              subject: draft.subject,
+              body: draft.body,
+              status: 'DRAFT',
+              followupNumber: draft.followupNumber,
+              scheduledAt: draft.scheduledAt,
+              unsubscribeToken,
+            },
+          });
+          createdSequence.push({
+            ...email,
+            lead: { businessName: lead.businessName },
+            locked: true,
+            source: 'med_spa_locked_templates',
+          });
+        }
+
+        // Log warning if the fallback treatment was used
+        if (result.usedFallbackTreatment) {
+          await logActivity({
+            userId: req.user!.userId,
+            userEmail: req.user!.email,
+            action: 'MED_SPA_FALLBACK_TREATMENT',
+            targetType: 'lead',
+            targetId: lead.id,
+            metadata: { businessName: lead.businessName },
+            req,
+          });
+        }
+
+        generated.push(...createdSequence);
+        continue;
+      }
+
+      // ─── Default path: AI-generated single email (UNCHANGED) ───────────
       const demoLink =
         (demoLinkId ? demoLinks.find((d) => d.id === demoLinkId)?.url : null) ||
         lead.customDemoLink ||
@@ -137,7 +196,7 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
           senderName: settings?.senderName || 'Alex',
           templateBody: template?.body,
         },
-        apiKey
+        apiKey!
       );
 
       const unsubscribeToken = crypto.randomBytes(32).toString('hex');
@@ -159,7 +218,7 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
       generated.push({ ...email, lead: { businessName: lead.businessName } });
     }
 
-    res.json(generated);
+    res.json({ generated, skipped });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to generate emails';
     res.status(500).json({ error: message });

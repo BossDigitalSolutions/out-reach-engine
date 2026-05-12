@@ -118,6 +118,11 @@ interface GeneratedEmail {
   subject: string;
   body: string;
   lead: { businessName: string };
+  locked?: boolean;
+  source?: string;
+  scheduledAt?: string | null;
+  followupNumber?: number;
+  leadId?: string;
 }
 
 const TONES = [
@@ -221,10 +226,21 @@ export default function Leads() {
   const generateMutation = useMutation({
     mutationFn: () =>
       emailsApi.generate(Array.from(selected), tone, selectedDemoId || undefined).then((r) => r.data),
-    onSuccess: (emails) => {
+    onSuccess: (data: { generated: GeneratedEmail[]; skipped: Array<{ leadId: string; businessName: string; reason: string }> } | GeneratedEmail[]) => {
+      // Backwards-compat: server may return array (old) or { generated, skipped } (new)
+      const emails = Array.isArray(data) ? data : data.generated;
+      const skipped = Array.isArray(data) ? [] : (data.skipped || []);
       setGeneratedEmails(emails);
       setShowEmailModal(true);
-      toast.success(`Generated ${emails.length} email${emails.length !== 1 ? 's' : ''}`);
+      const lockedCount = emails.filter((e) => (e as GeneratedEmail).locked).length;
+      if (lockedCount > 0) {
+        toast.success(`Generated ${emails.length} email${emails.length !== 1 ? 's' : ''} (${lockedCount} med spa locked)`);
+      } else {
+        toast.success(`Generated ${emails.length} email${emails.length !== 1 ? 's' : ''}`);
+      }
+      if (skipped.length > 0) {
+        toast.error(`Skipped ${skipped.length}: ${skipped.map(s => `${s.businessName} (${s.reason})`).join(', ')}`, { duration: 8000 });
+      }
     },
     onError: (err: unknown) => {
       const msg =
@@ -306,11 +322,28 @@ export default function Leads() {
   });
 
   const scheduleMutation = useMutation({
-    mutationFn: () => {
-      const emailIds = generatedEmails.map((e) => e.id);
-      return emailsApi
-        .scheduleBatch(emailIds, scheduleDate || new Date().toISOString(), sendPerDay, minutesBetween)
-        .then((r) => r.data);
+    mutationFn: async () => {
+      // Med spa locked emails already have scheduledAt — use their existing time.
+      // Non-locked emails use the user's date + cadence settings via scheduleBatch.
+      const locked = generatedEmails.filter((e) => e.locked && e.scheduledAt);
+      const unlocked = generatedEmails.filter((e) => !e.locked);
+
+      let scheduled = 0;
+      if (locked.length > 0) {
+        for (const email of locked) {
+          if (!email.scheduledAt) continue;
+          await emailsApi.schedule(email.id, email.scheduledAt);
+          scheduled++;
+        }
+      }
+      if (unlocked.length > 0) {
+        const emailIds = unlocked.map((e) => e.id);
+        const r = await emailsApi
+          .scheduleBatch(emailIds, scheduleDate || new Date().toISOString(), sendPerDay, minutesBetween)
+          .then((r) => r.data);
+        scheduled += r.scheduled || 0;
+      }
+      return { scheduled };
     },
     onSuccess: (data) => {
       toast.success(`Scheduled ${data.scheduled} emails`);
@@ -1026,16 +1059,29 @@ export default function Leads() {
       )}
 
       {/* Generated Emails Modal */}
-      {showEmailModal && (
+      {showEmailModal && (() => {
+        const allLocked = generatedEmails.length > 0 && generatedEmails.every((e) => e.locked);
+        const anyLocked = generatedEmails.some((e) => e.locked);
+        const lockedCount = generatedEmails.filter((e) => e.locked).length;
+        return (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-slate-800">
               <div>
-                <h2 className="text-lg font-semibold text-slate-100">
-                  Generated Emails ({generatedEmails.length})
+                <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                  {allLocked ? (
+                    <>
+                      <span title="Med Spa sequence templates are locked to maintain campaign quality.">🔒</span>
+                      Med Spa Sequence — {generatedEmails.length} emails locked
+                    </>
+                  ) : (
+                    <>Generated Emails ({generatedEmails.length}{anyLocked ? `, ${lockedCount} locked` : ''})</>
+                  )}
                 </h2>
                 <p className="text-sm text-slate-400">
-                  Review and edit emails before scheduling
+                  {allLocked
+                    ? 'Locked templates. Variables resolved. Pre-scheduled on a 1/4/9 cadence (Tue/Wed/Thu 08:30 UK).'
+                    : 'Review and edit emails before scheduling'}
                 </p>
               </div>
               <button
@@ -1048,20 +1094,37 @@ export default function Leads() {
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {generatedEmails.map((email, i) => (
-                <div key={email.id} className="bg-slate-800 rounded-lg p-4 space-y-3">
+                <div key={email.id} className={`rounded-lg p-4 space-y-3 ${email.locked ? 'bg-pink-950/20 border border-pink-900/40' : 'bg-slate-800'}`}>
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-200">
+                    <p className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                      {email.locked && (
+                        <span title="Locked med spa template" className="text-pink-400">🔒</span>
+                      )}
                       {i + 1}. {email.lead.businessName}
+                      {email.locked && typeof email.followupNumber === 'number' && (
+                        <span className="text-xs text-pink-300 bg-pink-900/30 rounded px-2 py-0.5 ml-2">
+                          {email.followupNumber === 0 && 'Day 1 — Hook'}
+                          {email.followupNumber === 1 && 'Day 4 — Paying Twice'}
+                          {email.followupNumber === 2 && 'Day 9 — Close'}
+                        </span>
+                      )}
+                      {email.locked && email.scheduledAt && (
+                        <span className="text-xs text-slate-400 ml-2">
+                          → sends {new Date(email.scheduledAt).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                     </p>
                     <div className="flex items-center gap-2">
-                      <button
-                        className="btn-secondary text-xs py-1 px-2 flex items-center gap-1"
-                        onClick={() => sendNowMutation.mutate(email.id)}
-                        disabled={sendNowMutation.isPending}
-                      >
-                        <Send size={12} />
-                        Send Now
-                      </button>
+                      {!email.locked && (
+                        <button
+                          className="btn-secondary text-xs py-1 px-2 flex items-center gap-1"
+                          onClick={() => sendNowMutation.mutate(email.id)}
+                          disabled={sendNowMutation.isPending}
+                        >
+                          <Send size={12} />
+                          Send Now
+                        </button>
+                      )}
                     </div>
                   </div>
                   {editingEmail?.id === email.id ? (
@@ -1121,12 +1184,17 @@ export default function Leads() {
                           {email.body}
                         </p>
                       </div>
-                      <button
-                        className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                        onClick={() => setEditingEmail(email)}
-                      >
-                        <Edit2 size={12} /> Edit email
-                      </button>
+                      {!email.locked && (
+                        <button
+                          className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                          onClick={() => setEditingEmail(email)}
+                        >
+                          <Edit2 size={12} /> Edit email
+                        </button>
+                      )}
+                      {email.locked && (
+                        <p className="text-xs text-pink-400/80">🔒 Locked — content cannot be edited</p>
+                      )}
                     </>
                   )}
                 </div>
@@ -1135,46 +1203,55 @@ export default function Leads() {
 
             <div className="border-t border-slate-800 p-4 space-y-3">
               <div className="flex flex-wrap items-end gap-3">
-                <div>
-                  <label className="label text-xs">Schedule start date</label>
-                  <input
-                    type="datetime-local"
-                    className="input text-xs"
-                    value={scheduleDate}
-                    onChange={(e) => setScheduleDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="label text-xs">Minutes between emails</label>
-                  <input
-                    type="number"
-                    className="input text-xs w-28"
-                    min={0}
-                    max={60}
-                    value={minutesBetween}
-                    onChange={(e) => setMinutesBetween(Number(e.target.value))}
-                    title="Set to 0 to spread over the day instead"
-                  />
-                </div>
-                {minutesBetween === 0 && (
-                  <div>
-                    <label className="label text-xs">Emails per day</label>
-                    <input
-                      type="number"
-                      className="input text-xs w-24"
-                      min={1}
-                      max={200}
-                      value={sendPerDay}
-                      onChange={(e) => setSendPerDay(Number(e.target.value))}
-                    />
-                  </div>
+                {!allLocked && (
+                  <>
+                    <div>
+                      <label className="label text-xs">Schedule start date</label>
+                      <input
+                        type="datetime-local"
+                        className="input text-xs"
+                        value={scheduleDate}
+                        onChange={(e) => setScheduleDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="label text-xs">Minutes between emails</label>
+                      <input
+                        type="number"
+                        className="input text-xs w-28"
+                        min={0}
+                        max={60}
+                        value={minutesBetween}
+                        onChange={(e) => setMinutesBetween(Number(e.target.value))}
+                        title="Set to 0 to spread over the day instead"
+                      />
+                    </div>
+                    {minutesBetween === 0 && (
+                      <div>
+                        <label className="label text-xs">Emails per day</label>
+                        <input
+                          type="number"
+                          className="input text-xs w-24"
+                          min={1}
+                          max={200}
+                          value={sendPerDay}
+                          onChange={(e) => setSendPerDay(Number(e.target.value))}
+                        />
+                      </div>
+                    )}
+                    {minutesBetween > 0 && scheduleDate && (
+                      <div className="text-xs text-slate-400 self-end pb-2">
+                        {generatedEmails.length} emails · last sends at{' '}
+                        {new Date(
+                          new Date(scheduleDate).getTime() + (generatedEmails.length - 1) * minutesBetween * 60000
+                        ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+                  </>
                 )}
-                {minutesBetween > 0 && scheduleDate && (
-                  <div className="text-xs text-slate-400 self-end pb-2">
-                    {generatedEmails.length} emails · last sends at{' '}
-                    {new Date(
-                      new Date(scheduleDate).getTime() + (generatedEmails.length - 1) * minutesBetween * 60000
-                    ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {allLocked && (
+                  <div className="text-xs text-slate-400 flex-1">
+                    🔒 Cadence locked. Each email is pre-scheduled at the time shown above. No edits permitted.
                   </div>
                 )}
                 <button
@@ -1190,7 +1267,7 @@ export default function Leads() {
                   ) : (
                     <>
                       <Clock size={16} />
-                      Schedule All Emails
+                      {allLocked ? 'Schedule sequence' : 'Schedule All Emails'}
                     </>
                   )}
                 </button>
@@ -1198,7 +1275,8 @@ export default function Leads() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
