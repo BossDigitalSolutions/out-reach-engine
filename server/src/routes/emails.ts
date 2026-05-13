@@ -9,6 +9,7 @@ import { decryptField } from '../services/encryption';
 import { logActivity } from '../services/activityLogger';
 import { syncContactToGhl, sendGhlMessage } from '../services/ghl';
 import { isMedSpaIndustry, generateMedSpaSequence } from '../services/medSpaTemplates';
+import { isRealEstateIndustry, generateRealEstateSequence } from '../services/realEstateTemplates';
 
 const router = Router();
 
@@ -97,8 +98,9 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
       where: { id: { in: leadIds }, userId: req.user!.userId },
     });
 
-    // Detect if this batch contains any non-med-spa leads needing AI generation
-    const needsAi = leads.some((l) => !isMedSpaIndustry(l.industry));
+    // Detect if this batch contains any leads needing AI generation
+    // (i.e. NOT med spa AND NOT real estate — those use locked templates)
+    const needsAi = leads.some((l) => !isMedSpaIndustry(l.industry) && !isRealEstateIndustry(l.industry));
     const apiKey = decryptField(settings?.anthropicApiKey) || process.env.ANTHROPIC_API_KEY;
     if (needsAi && !apiKey) {
       return res.status(400).json({
@@ -183,6 +185,54 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
             targetId: lead.id,
             metadata: { businessName: lead.businessName },
             req,
+          });
+        }
+
+        generated.push(...createdSequence);
+        continue;
+      }
+
+      // ─── FORK: Real Estate leads use locked templates, NO AI ───────────
+      if (isRealEstateIndustry(lead.industry)) {
+        const result = generateRealEstateSequence({
+          businessName: lead.businessName,
+          email: lead.email,
+          emailFromSite: lead.emailFromSite,
+          websiteUrl: lead.websiteUrl,
+        });
+        if (!result.ok) {
+          skipped.push({ leadId: lead.id, businessName: lead.businessName, reason: result.reason });
+          continue;
+        }
+
+        // Persist derived market/portal on the lead for downstream GHL push
+        await prisma.lead.update({
+          where: { id: lead.id },
+          data: { market: result.market, portal: result.portal },
+        });
+
+        const createdSequence: Array<Record<string, unknown>> = [];
+        for (const draft of result.emails) {
+          const unsubscribeToken = crypto.randomBytes(32).toString('hex');
+          const email = await prisma.email.create({
+            data: {
+              userId: req.user!.userId,
+              leadId: lead.id,
+              subject: draft.subject,
+              body: draft.body,
+              status: 'DRAFT',
+              followupNumber: draft.followupNumber,
+              scheduledAt: draft.scheduledAt,
+              unsubscribeToken,
+            },
+          });
+          createdSequence.push({
+            ...email,
+            lead: { businessName: lead.businessName },
+            locked: true,
+            source: 'real_estate_locked_templates',
+            market: result.market,
+            portal: result.portal,
           });
         }
 

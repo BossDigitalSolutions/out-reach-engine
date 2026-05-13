@@ -138,6 +138,8 @@ model Lead {
   businessType       String?
   isQualifiedMedSpa  Boolean?
   qualifyingTreatmentsFound Json?
+  market             String?
+  portal             String?
   enrichmentStatus   String?
   enrichmentRunAt    DateTime?
   createdAt        DateTime   @default(now())
