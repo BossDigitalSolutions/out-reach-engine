@@ -211,6 +211,34 @@ function getTzOffsetMs(date: Date, tz: string): number {
   return asUtc - date.getTime();
 }
 
+// Check whether `at` falls inside a real estate send window:
+//   Tue/Wed/Thu, 07:00–09:00 in the market's local timezone.
+// Used by the dispatcher to gate sends, regardless of how scheduledAt was set.
+export function isInRealEstateSendWindow(at: Date, market: Market): boolean {
+  const tz = timezoneForMarket(market);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(at).map((p) => [p.type, p.value])
+  );
+  const weekday = parts.weekday;
+  if (weekday !== 'Tue' && weekday !== 'Wed' && weekday !== 'Thu') return false;
+  const hour = parts.hour === '24' ? 0 : Number(parts.hour);
+  return hour >= 7 && hour < 9;
+}
+
+// Subject lines for the 3 RE templates — used to detect real estate emails
+// at dispatch time (when we don't have a `source` field on the Email row).
+export const RE_LOCKED_SUBJECTS = new Set([
+  RE_TEMPLATE_1.subject,
+  RE_TEMPLATE_2.subject,
+  RE_TEMPLATE_3.subject,
+]);
+
 // Snap `from` forward to the next valid send slot:
 //   - Day: Tue / Wed / Thu in market timezone
 //   - Time: random within 07:00:00 .. 08:59:59 local

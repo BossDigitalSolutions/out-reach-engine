@@ -3,8 +3,50 @@ import { prisma } from '../index';
 import { sendEmail } from './sendgrid';
 import { processFollowUps } from './followup';
 import { decryptField } from './encryption';
-import { syncContactToGhl, sendGhlMessage, getGhlRecentConversations, getGhlMessages } from './ghl';
+import {
+  syncContactToGhl,
+  sendGhlMessage,
+  getGhlRecentConversations,
+  getGhlMessages,
+  addGhlContactTags,
+  updateGhlContactField,
+} from './ghl';
 import { processSmsSequences, stopSequencesForLead } from './smsSequence';
+import {
+  isRealEstateIndustry,
+  isInRealEstateSendWindow,
+  RE_LOCKED_SUBJECTS,
+  type Market,
+} from './realEstateTemplates';
+
+// ─── Real-estate campaign tuning ─────────────────────────────────────────
+// Ramped daily cap is anchored to the per-user earliest scheduledAt of any
+// RE email. Day 1-7 = 20/day, Day 8-14 = 50/day, Day 15+ = 100/day.
+const RE_CAP_WEEK_1 = Number(process.env.RE_CAP_WEEK_1 || 20);
+const RE_CAP_WEEK_2 = Number(process.env.RE_CAP_WEEK_2 || 50);
+const RE_CAP_WEEK_3_PLUS = Number(process.env.RE_CAP_WEEK_3_PLUS || 100);
+// Minimum gap (ms) between any two real-estate sends, applied per-user.
+const RE_MIN_SEND_SPACING_MS = Number(process.env.RE_MIN_SEND_SPACING_MS || 60_000);
+
+function isRealEstateEmail(email: {
+  subject: string;
+  lead: { industry: string | null };
+}): boolean {
+  if (RE_LOCKED_SUBJECTS.has(email.subject)) return true;
+  return isRealEstateIndustry(email.lead.industry);
+}
+
+function reMarketForLead(lead: { market: string | null }): Market {
+  const m = (lead.market || 'UNKNOWN') as Market;
+  if (['UK', 'US', 'CA', 'AU', 'NZ', 'UNKNOWN'].includes(m)) return m;
+  return 'UNKNOWN';
+}
+
+function reDailyCapForCampaignDay(campaignDay: number): number {
+  if (campaignDay <= 7) return RE_CAP_WEEK_1;
+  if (campaignDay <= 14) return RE_CAP_WEEK_2;
+  return RE_CAP_WEEK_3_PLUS;
+}
 
 export function startScheduler() {
   // Every 5 minutes: process scheduled emails
@@ -60,6 +102,47 @@ async function processScheduledEmails() {
 
       const remaining = limit - sentToday;
 
+      // ─── Real-estate ramped cap ───────────────────────────────────────
+      // Day 1 = the earliest scheduled RE email for this user. From there
+      // RE_CAP_WEEK_1/2/3_PLUS applies as a per-day ceiling on RE sends only.
+      const firstReEmail = await prisma.email.findFirst({
+        where: {
+          userId: setting.userId,
+          subject: { in: Array.from(RE_LOCKED_SUBJECTS) },
+        },
+        orderBy: { scheduledAt: 'asc' },
+        select: { scheduledAt: true },
+      });
+      const campaignStart = firstReEmail?.scheduledAt || null;
+      let reSentToday = 0;
+      let reCapToday = Infinity;
+      if (campaignStart) {
+        const startMidnight = new Date(campaignStart);
+        startMidnight.setHours(0, 0, 0, 0);
+        const dayN = Math.floor((today.getTime() - startMidnight.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+        reCapToday = reDailyCapForCampaignDay(Math.max(1, dayN));
+        reSentToday = await prisma.email.count({
+          where: {
+            userId: setting.userId,
+            sentAt: { gte: today },
+            status: { in: ['SENT', 'OPENED', 'CLICKED', 'REPLIED'] },
+            subject: { in: Array.from(RE_LOCKED_SUBJECTS) },
+          },
+        });
+      }
+
+      // Last-real-estate-send timestamp (for 1-min spacing)
+      const lastReSend = await prisma.email.findFirst({
+        where: {
+          userId: setting.userId,
+          subject: { in: Array.from(RE_LOCKED_SUBJECTS) },
+          sentAt: { not: null },
+        },
+        orderBy: { sentAt: 'desc' },
+        select: { sentAt: true },
+      });
+      let lastReSentAt = lastReSend?.sentAt?.getTime() || 0;
+
       const emails = await prisma.email.findMany({
         where: {
           userId: setting.userId,
@@ -72,12 +155,50 @@ async function processScheduledEmails() {
       });
 
       for (const email of emails) {
-        if (!email.lead.email || email.lead.unsubscribed) {
-          await prisma.email.update({
-            where: { id: email.id },
+        const reEmail = isRealEstateEmail(email);
+
+        // ─── Phase 3 #3: atomic reply check ─────────────────────────────
+        // Re-fetch lead state right before send (could have replied since queue).
+        const freshLead = await prisma.lead.findUnique({
+          where: { id: email.leadId },
+          select: { status: true, unsubscribed: true, email: true, ghlContactId: true },
+        });
+        if (!freshLead || !freshLead.email || freshLead.unsubscribed) {
+          await prisma.email.update({ where: { id: email.id }, data: { status: 'FAILED' } });
+          continue;
+        }
+        if (['REPLIED', 'CALL_BOOKED', 'CONVERTED'].includes(freshLead.status)) {
+          // Lead already replied — cancel this send and any later scheduled
+          // emails in the same sequence for the same lead.
+          await prisma.email.updateMany({
+            where: {
+              leadId: email.leadId,
+              status: 'SCHEDULED',
+            },
             data: { status: 'FAILED' },
           });
           continue;
+        }
+
+        // ─── Phase 2 #1: window enforcement for real-estate emails ──────
+        if (reEmail) {
+          const market = reMarketForLead(email.lead);
+          if (!isInRealEstateSendWindow(new Date(), market)) {
+            // Out of window — leave SCHEDULED, picked up next valid tick.
+            continue;
+          }
+
+          // ─── Phase 2 #3: ramped daily cap for RE sends ────────────────
+          if (reSentToday >= reCapToday) {
+            continue;
+          }
+
+          // ─── Phase 2 #2: 1-min spacing between RE sends ───────────────
+          const sinceLast = Date.now() - lastReSentAt;
+          if (lastReSentAt > 0 && sinceLast < RE_MIN_SEND_SPACING_MS) {
+            // Skip this tick; another scheduler run will pick it up.
+            continue;
+          }
         }
 
         try {
@@ -86,15 +207,19 @@ async function processScheduledEmails() {
             console.error(`No SendGrid key for user ${setting.userId}`);
             continue;
           }
+          const replyTo = reEmail && process.env.RE_REPLY_TO_ADDRESS
+            ? process.env.RE_REPLY_TO_ADDRESS
+            : undefined;
           const messageId = await sendEmail(
             {
-              to: email.lead.email,
+              to: freshLead.email,
               from: 'info@ma.bossdigitalsolutions.tech',
               fromName: setting.senderName || 'Boss Digital Solutions',
               subject: email.subject,
               body: email.body,
               unsubscribeToken: email.unsubscribeToken || undefined,
               serverUrl: process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3001}`,
+              replyTo,
             },
             sendgridKey
           );
@@ -109,18 +234,23 @@ async function processScheduledEmails() {
             data: { status: 'CONTACTED' },
           });
 
+          if (reEmail) {
+            reSentToday++;
+            lastReSentAt = Date.now();
+          }
+
           // Sync to GHL so the email shows in GoHighLevel conversation
           try {
             const ghlApiKey = decryptField(setting.ghlApiKey) || process.env.GHL_API_KEY;
             const ghlLocationId = setting.ghlLocationId || process.env.GHL_LOCATION_ID;
             if (ghlApiKey && ghlLocationId) {
-              let ghlContactId = email.lead.ghlContactId;
+              let ghlContactId = freshLead.ghlContactId;
               if (!ghlContactId) {
                 ghlContactId = await syncContactToGhl(
                   {
                     businessName: email.lead.businessName,
                     ownerName: email.lead.ownerName,
-                    email: email.lead.email,
+                    email: freshLead.email,
                     phone: email.lead.phone,
                     address: email.lead.address,
                     city: email.lead.city,
@@ -139,11 +269,34 @@ async function processScheduledEmails() {
                 });
               }
               await sendGhlMessage(ghlContactId, email.body, 'Email', ghlApiKey, ghlLocationId, email.subject);
+
+              // ─── Phase 2 #4: GHL tag push per RE send ─────────────────
+              if (reEmail) {
+                const stageNum = (email.followupNumber ?? 0) + 1; // 1, 2, 3
+                const market = reMarketForLead(email.lead);
+                const tags = [
+                  'real_estate_outreach',
+                  `market_${market.toLowerCase()}`,
+                  `sequence_stage_${stageNum}`,
+                ];
+                try {
+                  await addGhlContactTags(ghlContactId, tags, ghlApiKey);
+                } catch (tagErr) {
+                  console.error('GHL tag push failed (non-blocking):', tagErr instanceof Error ? tagErr.message : tagErr);
+                }
+                try {
+                  await updateGhlContactField(ghlContactId, 'last_sent_at', new Date().toISOString(), ghlApiKey);
+                } catch (fieldErr) {
+                  console.error('GHL last_sent_at update failed (non-blocking):', fieldErr instanceof Error ? fieldErr.message : fieldErr);
+                }
+              }
             }
           } catch (ghlErr) {
             console.error('GHL sync failed (non-blocking):', ghlErr instanceof Error ? ghlErr.message : ghlErr);
           }
 
+          // Existing 2s soft delay (kept for non-RE flows); RE flow uses
+          // the per-user RE_MIN_SEND_SPACING_MS gate at the top of the loop.
           await new Promise((r) => setTimeout(r, 2000));
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

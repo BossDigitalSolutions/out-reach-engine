@@ -1,17 +1,117 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
+import multer from 'multer';
 import { prisma } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { generateEmail } from '../services/claude';
 import { sendEmail } from '../services/sendgrid';
 import { decryptField } from '../services/encryption';
 import { logActivity } from '../services/activityLogger';
-import { syncContactToGhl, sendGhlMessage } from '../services/ghl';
+import { syncContactToGhl, sendGhlMessage, addGhlContactTags } from '../services/ghl';
 import { isMedSpaIndustry, generateMedSpaSequence } from '../services/medSpaTemplates';
 import { isRealEstateIndustry, generateRealEstateSequence } from '../services/realEstateTemplates';
+import { stopSequencesForLead } from '../services/smsSequence';
 
 const router = Router();
+
+// SendGrid Inbound Parse webhook for reply detection (no auth needed).
+// SendGrid posts multipart/form-data to this endpoint when an email is sent
+// to the configured reply subdomain. We parse the From header, find the
+// matching lead by email, mark the lead REPLIED, stop active sequences,
+// and push REPLIED / demo_requested tags to GHL.
+//
+// Requires DNS + SendGrid Inbound Parse config:
+//   MX  <reply-subdomain>  ->  mx.sendgrid.net
+//   SendGrid Inbound Parse  ->  https://<server>/api/emails/inbound
+const inboundUpload = multer();
+router.post('/inbound', inboundUpload.any(), async (req, res) => {
+  try {
+    const body = req.body as Record<string, string>;
+    const fromHeader = body.from || '';
+    const textBody = body.text || body.html || '';
+    const subjectHeader = body.subject || '';
+
+    // Extract email address from `from` (e.g., "Jane <jane@agency.co.uk>")
+    const match = fromHeader.match(/<([^>]+)>/) || fromHeader.match(/([^\s,;<]+@[^\s,;>]+)/);
+    const senderEmail = match ? match[1].trim().toLowerCase() : '';
+    if (!senderEmail) {
+      console.warn('Inbound webhook: could not parse sender from', fromHeader);
+      return res.sendStatus(200);
+    }
+
+    // Match lead by either `email` or `emailFromSite`
+    const lead = await prisma.lead.findFirst({
+      where: {
+        OR: [
+          { email: { equals: senderEmail, mode: 'insensitive' } },
+          { emailFromSite: { equals: senderEmail, mode: 'insensitive' } },
+        ],
+      },
+    });
+    if (!lead) {
+      console.log(`Inbound webhook: no lead found for ${senderEmail} (subject: ${subjectHeader})`);
+      return res.sendStatus(200);
+    }
+
+    // Skip if already past the reply stage
+    if (['REPLIED', 'CALL_BOOKED', 'CONVERTED'].includes(lead.status)) {
+      return res.sendStatus(200);
+    }
+
+    const now = new Date();
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { status: 'REPLIED' },
+    });
+
+    // Mark the most recent SENT/OPENED/CLICKED email as REPLIED
+    const latestSent = await prisma.email.findFirst({
+      where: { leadId: lead.id, status: { in: ['SENT', 'OPENED', 'CLICKED'] } },
+      orderBy: { sentAt: 'desc' },
+    });
+    if (latestSent) {
+      await prisma.email.update({
+        where: { id: latestSent.id },
+        data: { status: 'REPLIED', repliedAt: now },
+      });
+    }
+
+    // Cancel any future scheduled emails for this lead
+    await prisma.email.updateMany({
+      where: { leadId: lead.id, status: 'SCHEDULED' },
+      data: { status: 'FAILED' },
+    });
+
+    // Stop any active SMS sequences
+    try {
+      await stopSequencesForLead(lead.id);
+    } catch (e) {
+      console.error('Inbound webhook: stopSequencesForLead failed:', e instanceof Error ? e.message : e);
+    }
+
+    // Push REPLIED + (optionally) demo_requested tags to GHL
+    try {
+      const settings = await prisma.settings.findUnique({ where: { userId: lead.userId } });
+      const ghlApiKey = decryptField(settings?.ghlApiKey) || process.env.GHL_API_KEY;
+      if (settings && ghlApiKey && lead.ghlContactId) {
+        const tags = ['replied'];
+        if (/\bdemo\b/i.test(textBody) || /\bdemo\b/i.test(subjectHeader)) {
+          tags.push('demo_requested');
+        }
+        await addGhlContactTags(lead.ghlContactId, tags, ghlApiKey);
+      }
+    } catch (ghlErr) {
+      console.error('Inbound webhook: GHL tag push failed:', ghlErr instanceof Error ? ghlErr.message : ghlErr);
+    }
+
+    console.log(`Inbound webhook: marked ${lead.businessName} (${senderEmail}) as REPLIED`);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Inbound webhook error:', err instanceof Error ? err.message : err);
+    res.sendStatus(200); // Always 200 to SendGrid
+  }
+});
 
 // SendGrid webhook (no auth needed)
 router.post('/webhook', async (req, res) => {

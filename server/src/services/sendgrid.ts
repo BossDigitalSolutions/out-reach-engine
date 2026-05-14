@@ -9,12 +9,13 @@ interface SendEmailOptions {
   unsubscribeUrl?: string;
   unsubscribeToken?: string;
   serverUrl?: string;
+  replyTo?: string;
 }
 
 export async function sendEmail(options: SendEmailOptions, apiKey: string): Promise<string> {
   sgMail.setApiKey(apiKey);
 
-  const { to, from, fromName, subject, body, unsubscribeToken, serverUrl } = options;
+  const { to, from, fromName, subject, body, unsubscribeToken, serverUrl, replyTo } = options;
 
   const unsubscribeLink =
     unsubscribeToken && serverUrl
@@ -33,6 +34,7 @@ export async function sendEmail(options: SendEmailOptions, apiKey: string): Prom
   const [response] = await sgMail.send({
     to,
     from: { email: from, name: fromName },
+    ...(replyTo ? { replyTo } : {}),
     subject,
     text: body + unsubscribeFooter,
     html: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">${htmlBody}${

@@ -104,6 +104,38 @@ export async function syncContactToGhl(
   return res.data?.contact?.id as string;
 }
 
+// ─── Add tags to a GHL contact (non-destructive — keeps existing tags) ─────
+
+export async function addGhlContactTags(
+  contactId: string,
+  tags: string[],
+  apiKey: string
+): Promise<void> {
+  if (tags.length === 0) return;
+  const client = ghlClient(apiKey);
+  await client.post(
+    `/contacts/${contactId}/tags`,
+    { tags },
+    { headers: { Version: '2021-07-28' } }
+  );
+}
+
+// ─── Update a single custom field on a GHL contact ─────────────────────────
+
+export async function updateGhlContactField(
+  contactId: string,
+  key: string,
+  value: string,
+  apiKey: string
+): Promise<void> {
+  const client = ghlClient(apiKey);
+  await client.put(
+    `/contacts/${contactId}`,
+    { customFields: [{ key, field_value: value }] },
+    { headers: { Version: '2021-07-28' } }
+  );
+}
+
 // ─── Send a message via GHL conversation ─────────────────────────────────────
 // type: 'WhatsApp' | 'Email' | 'SMS'
 
