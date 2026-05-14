@@ -439,6 +439,20 @@ export default function Leads() {
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / 50);
 
+  // Industry detection for selected leads (used to gate industry-specific
+  // action buttons). Only checks leads visible on the current page — if the
+  // user selects across pages, hidden selections default to showing all
+  // buttons (safer than hiding).
+  const RE_INDUSTRY_KEYWORDS = ['real estate', 'realtor', 'estate agent', 'realty', 'lettings agency', 'letting agent'];
+  const isReIndustry = (industry?: string | null) => {
+    if (!industry) return false;
+    const n = industry.toLowerCase().trim();
+    return RE_INDUSTRY_KEYWORDS.some((kw) => n.includes(kw));
+  };
+  const visibleSelectedLeads = leads.filter((l) => selected.has(l.id));
+  const allSelectedAreRealEstate =
+    visibleSelectedLeads.length > 0 && visibleSelectedLeads.every((l) => isReIndustry(l.industry));
+
   const allSelected = leads.length > 0 && leads.every((l) => selected.has(l.id));
   const toggleAll = useCallback(() => {
     if (allSelected) {
@@ -552,24 +566,26 @@ export default function Leads() {
                 </div>
                 Sync to GHL ({selected.size})
               </button>
-              <button
-                className="flex items-center gap-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
-                onClick={() => enrichMedSpaMutation.mutate()}
-                disabled={enrichMedSpaMutation.isPending}
-                title="Scrape websites + extract med spa data via Firecrawl + Claude"
-              >
-                {enrichMedSpaMutation.isPending ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Enriching...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} />
-                    Enrich Med Spa ({selected.size})
-                  </>
-                )}
-              </button>
+              {!allSelectedAreRealEstate && (
+                <button
+                  className="flex items-center gap-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                  onClick={() => enrichMedSpaMutation.mutate()}
+                  disabled={enrichMedSpaMutation.isPending}
+                  title="Scrape websites + extract med spa data via Firecrawl + Claude"
+                >
+                  {enrichMedSpaMutation.isPending ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Enriching...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      Enrich Med Spa ({selected.size})
+                    </>
+                  )}
+                </button>
+              )}
               <button
                 className="btn-danger flex items-center gap-1"
                 onClick={() => {
