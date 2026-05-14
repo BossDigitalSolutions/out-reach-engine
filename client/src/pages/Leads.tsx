@@ -239,9 +239,14 @@ export default function Leads() {
       const skipped = Array.isArray(data) ? [] : (data.skipped || []);
       setGeneratedEmails(emails);
       setShowEmailModal(true);
-      const lockedCount = emails.filter((e) => (e as GeneratedEmail).locked).length;
+      const reCount = emails.filter((e) => (e as GeneratedEmail).source === 'real_estate_locked_templates').length;
+      const medCount = emails.filter((e) => (e as GeneratedEmail).source === 'med_spa_locked_templates').length;
+      const lockedCount = reCount + medCount;
       if (lockedCount > 0) {
-        toast.success(`Generated ${emails.length} email${emails.length !== 1 ? 's' : ''} (${lockedCount} med spa locked)`);
+        const lockedParts: string[] = [];
+        if (reCount > 0) lockedParts.push(`${reCount} real estate locked`);
+        if (medCount > 0) lockedParts.push(`${medCount} med spa locked`);
+        toast.success(`Generated ${emails.length} email${emails.length !== 1 ? 's' : ''} (${lockedParts.join(', ')})`);
       } else {
         toast.success(`Generated ${emails.length} email${emails.length !== 1 ? 's' : ''}`);
       }
@@ -1098,10 +1103,14 @@ export default function Leads() {
         const allMedSpa = allLocked && generatedEmails.every((e) => e.source === 'med_spa_locked_templates');
         const lockedHeader = allReal
           ? `Real Estate Sequence — ${generatedEmails.length} emails locked`
-          : `Med Spa Sequence — ${generatedEmails.length} emails locked`;
+          : allMedSpa
+          ? `Med Spa Sequence — ${generatedEmails.length} emails locked`
+          : `Locked Sequence — ${generatedEmails.length} emails locked`;
         const lockedSubtitle = allReal
-          ? 'Locked templates. Variables resolved. Pre-scheduled on a 1/4/9 cadence.'
-          : 'Locked templates. Variables resolved. Pre-scheduled on a 1/4/9 cadence (Tue/Wed/Thu 08:30 UK).';
+          ? 'Locked templates. Variables resolved. Pre-scheduled on a 1/4/9 cadence (Tue/Wed/Thu 07:00–09:00 local).'
+          : allMedSpa
+          ? 'Locked templates. Variables resolved. Pre-scheduled on a 1/4/9 cadence (Tue/Wed/Thu 08:30 UK).'
+          : 'Locked templates. Variables resolved. Pre-scheduled on a 1/4/9 cadence.';
         return (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -1110,7 +1119,7 @@ export default function Leads() {
                 <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
                   {allLocked ? (
                     <>
-                      <span title={allReal ? 'Real estate sequence templates are locked.' : 'Med spa sequence templates are locked.'}>🔒</span>
+                      <span title={allReal ? 'Real estate sequence templates are locked.' : allMedSpa ? 'Med spa sequence templates are locked.' : 'Sequence templates are locked.'}>🔒</span>
                       {lockedHeader}
                     </>
                   ) : (
@@ -1136,13 +1145,24 @@ export default function Leads() {
               {generatedEmails.map((email, i) => {
                 const isRe = email.source === 'real_estate_locked_templates';
                 const isMedSpa = email.source === 'med_spa_locked_templates';
+                const reLabels = ['Day 1 — Enquiries After 6pm', 'Day 4 — Whoever Replies First', 'Day 9 — Last One'];
+                const medLabels = ['Day 1 — Hook', 'Day 4 — Paying Twice', 'Day 9 — Close'];
+                const stageLabel = isRe
+                  ? reLabels[email.followupNumber ?? -1]
+                  : isMedSpa
+                  ? medLabels[email.followupNumber ?? -1]
+                  : null;
                 const badgeColour = isRe
                   ? 'text-blue-300 bg-blue-900/30 border-blue-800/40'
-                  : 'text-pink-300 bg-pink-900/30 border-pink-800/40';
+                  : isMedSpa
+                  ? 'text-pink-300 bg-pink-900/30 border-pink-800/40'
+                  : 'text-slate-300 bg-slate-800/40 border-slate-700/40';
                 const bgColour = isRe
                   ? 'bg-blue-950/20 border border-blue-900/40'
-                  : 'bg-pink-950/20 border border-pink-900/40';
-                const iconColour = isRe ? 'text-blue-400' : 'text-pink-400';
+                  : isMedSpa
+                  ? 'bg-pink-950/20 border border-pink-900/40'
+                  : 'bg-slate-900/40 border border-slate-700/40';
+                const iconColour = isRe ? 'text-blue-400' : isMedSpa ? 'text-pink-400' : 'text-slate-400';
                 const lockTitle = isRe
                   ? 'Locked real estate template'
                   : isMedSpa
@@ -1156,14 +1176,9 @@ export default function Leads() {
                         <span title={lockTitle} className={iconColour}>🔒</span>
                       )}
                       {i + 1}. {email.lead.businessName}
-                      {email.locked && typeof email.followupNumber === 'number' && (
+                      {email.locked && typeof email.followupNumber === 'number' && stageLabel && (
                         <span className={`text-xs rounded px-2 py-0.5 ml-2 ${badgeColour}`}>
-                          {isRe && email.followupNumber === 0 && 'Day 1 — Enquiries After 6pm'}
-                          {isRe && email.followupNumber === 1 && 'Day 4 — Whoever Replies First'}
-                          {isRe && email.followupNumber === 2 && 'Day 9 — Last One'}
-                          {!isRe && email.followupNumber === 0 && 'Day 1 — Hook'}
-                          {!isRe && email.followupNumber === 1 && 'Day 4 — Paying Twice'}
-                          {!isRe && email.followupNumber === 2 && 'Day 9 — Close'}
+                          {stageLabel}
                         </span>
                       )}
                       {email.locked && email.scheduledAt && (
@@ -1251,7 +1266,7 @@ export default function Leads() {
                         </button>
                       )}
                       {email.locked && (
-                        <p className="text-xs text-pink-400/80">🔒 Locked — content cannot be edited</p>
+                        <p className={`text-xs ${isRe ? 'text-blue-400/80' : isMedSpa ? 'text-pink-400/80' : 'text-slate-400/80'}`}>🔒 Locked — content cannot be edited</p>
                       )}
                     </>
                   )}

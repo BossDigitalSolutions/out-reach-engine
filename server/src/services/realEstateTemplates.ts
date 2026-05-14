@@ -2,7 +2,10 @@
 // Hardcoded in code so AI / template UI cannot rewrite them.
 //
 // Cadence: Day 1 (offset 0), Day 4 (offset 3), Day 9 (offset 8).
-// Send window enforcement (Tue/Wed/Thu, 07–09 + 16–17 local) → Phase 2.
+// Send window: Tue/Wed/Thu, 07:00–09:00 local (market timezone), random
+// distribution. Skip-day shift is applied uniformly to all 3 emails: any
+// candidate date landing on Mon/Fri/Sat/Sun is pushed forward to the next
+// valid Tue/Wed/Thu.
 //
 // Personalisation: {{agency_name}}, {{portal}}
 // Portal derived from website URL TLD (Rightmove / Zillow / Realtor.ca / etc.).
@@ -105,7 +108,6 @@ export type Market = 'UK' | 'US' | 'CA' | 'AU' | 'NZ' | 'UNKNOWN';
 export function deriveMarketFromUrl(url?: string | null): Market {
   if (!url) return 'UNKNOWN';
   const lower = url.toLowerCase();
-  // Strip protocol + path to focus on host
   let host = lower.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
   host = host.split('?')[0];
 
@@ -113,7 +115,6 @@ export function deriveMarketFromUrl(url?: string | null): Market {
   if (host.endsWith('.co.nz')) return 'NZ';
   if (host.endsWith('.co.uk') || host.endsWith('.uk')) return 'UK';
   if (host.endsWith('.ca')) return 'CA';
-  // .com defaults to US (Phase 2 may add UK-signal detection)
   if (host.endsWith('.com') || host.endsWith('.net') || host.endsWith('.org')) return 'US';
   return 'UNKNOWN';
 }
@@ -134,6 +135,19 @@ export function portalForMarket(market: Market): string {
     default:
       return 'your listing portal';
   }
+}
+
+const MARKET_TIMEZONE: Record<Market, string> = {
+  UK: 'Europe/London',
+  US: 'America/New_York',
+  CA: 'America/Toronto',
+  AU: 'Australia/Sydney',
+  NZ: 'Pacific/Auckland',
+  UNKNOWN: 'Europe/London',
+};
+
+export function timezoneForMarket(market: Market): string {
+  return MARKET_TIMEZONE[market] || 'Europe/London';
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -158,9 +172,97 @@ function isValidEmail(email: string | null | undefined): email is string {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+// ─── Send-slot snap: Tue/Wed/Thu 07:00–09:00 local, random distribution ────
+
+function getDayOfWeekInTz(date: Date, tz: string): number {
+  const dayStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(date);
+  const dayMap: Record<string, number> = {
+    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+  };
+  return dayMap[dayStr] ?? 0;
+}
+
+// Compute UTC offset (ms) for a given instant in a given timezone, DST-aware.
+// Server-timezone-independent — uses Intl.DateTimeFormat parts rather than
+// the locale-fragile `toLocaleString` round-trip.
+function getTzOffsetMs(date: Date, tz: string): number {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = Object.fromEntries(
+    fmt.formatToParts(date).map((p) => [p.type, p.value])
+  );
+  const hour = parts.hour === '24' ? '00' : parts.hour;
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+  return asUtc - date.getTime();
+}
+
+// Snap `from` forward to the next valid send slot:
+//   - Day: Tue / Wed / Thu in market timezone
+//   - Time: random within 07:00:00 .. 08:59:59 local
+//   - Must be strictly in the future relative to `from`
+//
+// Used uniformly for Emails 1, 2, and 3.
+export function snapToNextRealEstateSendSlot(from: Date, market: Market): Date {
+  const tz = timezoneForMarket(market);
+
+  for (let i = 0; i < 14; i++) {
+    const candidate = new Date(from);
+    candidate.setDate(candidate.getDate() + i);
+    const dow = getDayOfWeekInTz(candidate, tz);
+    if (dow < 2 || dow > 4) continue; // skip Mon/Fri/Sat/Sun
+
+    // Build YYYY-MM-DD for this candidate in the target timezone
+    const dateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(candidate);
+
+    // Random time in 07:00:00 .. 08:59:59 (window is [07:00, 09:00))
+    const totalSeconds = 2 * 60 * 60; // 7200
+    const offsetSec = Math.floor(Math.random() * totalSeconds);
+    const hh = 7 + Math.floor(offsetSec / 3600);
+    const mm = Math.floor((offsetSec % 3600) / 60);
+    const ss = offsetSec % 60;
+    const hhStr = String(hh).padStart(2, '0');
+    const mmStr = String(mm).padStart(2, '0');
+    const ssStr = String(ss).padStart(2, '0');
+
+    // Compute UTC offset on this specific date in this tz (DST-aware)
+    const sampleUtc = new Date(`${dateStr}T12:00:00Z`);
+    const offsetMs = getTzOffsetMs(sampleUtc, tz);
+
+    // Interpret `${dateStr}T${hhStr}:${mmStr}:${ssStr}` as local-in-tz,
+    // then convert to UTC by subtracting the offset.
+    const localAsUtc = new Date(`${dateStr}T${hhStr}:${mmStr}:${ssStr}Z`);
+    const utcTarget = new Date(localAsUtc.getTime() - offsetMs);
+
+    if (utcTarget > from) return utcTarget;
+  }
+
+  // Defensive fallback: 7 days out (should never hit — 14-day window covers 6 valid days)
+  const fb = new Date(from);
+  fb.setDate(fb.getDate() + 7);
+  return fb;
+}
+
 // ─── Public: generate the 3-email sequence ────────────────────────────────
-// Phase 1: scheduledAt uses naive offset days from now. Phase 2 will snap
-// to the Tue/Wed/Thu 07–09 + 16–17 local window per market.
 
 export interface RealEstateEmailDraft {
   subject: string;
@@ -207,29 +309,34 @@ export function generateRealEstateSequence(
   const r2 = renderLockedTemplate(RE_TEMPLATE_2, vars);
   const r3 = renderLockedTemplate(RE_TEMPLATE_3, vars);
 
-  // Validate no unresolved placeholders
   for (const r of [r1, r2, r3]) {
     if (hasUnresolvedPlaceholders(r.subject) || hasUnresolvedPlaceholders(r.body)) {
       return { ok: false, reason: 'placeholder_unresolved' };
     }
   }
 
-  // Phase 1: naive offsets — Phase 2 will snap to Tue/Wed/Thu 07-09 / 16-17 local
+  // Cadence: Day 1, Day 4, Day 9 with skip-day shift applied uniformly.
+  // Each follow-up's target = previous send + offset days, then snap forward
+  // to the next valid Tue/Wed/Thu 07:00–09:00 slot.
   const now = new Date();
-  const day0 = new Date(now);
-  const day3 = new Date(now);
-  day3.setDate(day3.getDate() + 3);
-  const day8 = new Date(now);
-  day8.setDate(day8.getDate() + 8);
+  const day1 = snapToNextRealEstateSendSlot(now, market);
+
+  const day2Target = new Date(day1);
+  day2Target.setDate(day2Target.getDate() + 3);
+  const day2 = snapToNextRealEstateSendSlot(day2Target, market);
+
+  const day3Target = new Date(day2);
+  day3Target.setDate(day3Target.getDate() + 5);
+  const day3 = snapToNextRealEstateSendSlot(day3Target, market);
 
   return {
     ok: true,
     market,
     portal,
     emails: [
-      { subject: r1.subject, body: r1.body, scheduledAt: day0, followupNumber: 0 },
-      { subject: r2.subject, body: r2.body, scheduledAt: day3, followupNumber: 1 },
-      { subject: r3.subject, body: r3.body, scheduledAt: day8, followupNumber: 2 },
+      { subject: r1.subject, body: r1.body, scheduledAt: day1, followupNumber: 0 },
+      { subject: r2.subject, body: r2.body, scheduledAt: day2, followupNumber: 1 },
+      { subject: r3.subject, body: r3.body, scheduledAt: day3, followupNumber: 2 },
     ],
   };
 }
