@@ -5,7 +5,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { LeadStatus } from '@prisma/client';
 import { calculateScore } from '../services/scoring';
 import { scrapeWebsite } from '../services/websiteScraper';
-import { normalizePhone, isSmsEligible } from '../services/phoneUtils';
+import { zaPhoneForStorage } from '../services/phoneUtils';
 import { enrichMedSpaLeads } from '../services/medSpaEnrichment';
 
 const router = Router();
@@ -129,12 +129,13 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     const data = leadSchema.parse(req.body);
     const settings = await prisma.settings.findUnique({ where: { userId: req.user!.userId } });
     const score = calculateScore(data, settings);
-    const phoneInfo = data.phone ? normalizePhone(data.phone) : null;
+    // SA-only tool → classify as ZA (+27). normalizePhone would default to UK.
+    const za = zaPhoneForStorage(data.phone);
     const lead = await prisma.lead.create({
       data: {
         ...data,
-        phone: phoneInfo?.e164 || data.phone || null,
-        phoneMobile: phoneInfo ? isSmsEligible(phoneInfo) : null,
+        phone: za.phone || data.phone || null,
+        phoneMobile: za.mobile,
         userId: req.user!.userId,
         score,
       },
@@ -152,13 +153,11 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const data = leadSchema.partial().parse(req.body);
-    // Normalize phone if it's being updated
+    // Normalize phone if it's being updated (SA-only tool → classify as ZA).
     if (data.phone) {
-      const phoneInfo = normalizePhone(data.phone);
-      if (phoneInfo) {
-        (data as Record<string, unknown>).phone = phoneInfo.e164;
-        (data as Record<string, unknown>).phoneMobile = isSmsEligible(phoneInfo);
-      }
+      const za = zaPhoneForStorage(data.phone);
+      (data as Record<string, unknown>).phone = za.phone || data.phone || null;
+      (data as Record<string, unknown>).phoneMobile = za.mobile;
     }
     const lead = await prisma.lead.updateMany({
       where: { id: req.params.id, userId: req.user!.userId },

@@ -55,8 +55,9 @@ export const leadsApi = {
 
 // Scraper
 export const scraperApi = {
-  search: (industry: string, location: string, maxResults?: number) =>
-    api.post('/scraper/search', { industry, location, maxResults }),
+  // Runs each (category × location) pair and returns a CSV blob the browser downloads.
+  search: (pairs: { category: string; location: string }[], maxResults?: number) =>
+    api.post('/scraper/search', { pairs, maxResults }, { responseType: 'blob' }),
   save: (leads: unknown[]) => api.post('/scraper/save', { leads }),
 };
 

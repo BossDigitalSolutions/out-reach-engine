@@ -197,3 +197,88 @@ export function isMobileNumber(rawPhone: string | null | undefined, countryHint?
   if (!info) return false;
   return isSmsEligible(info);
 }
+
+// ─── South African phone classification (for CSV export) ────────────────────
+//
+// Used by the lead-scraper CSV export. Unlike normalizePhone() this NEVER drops
+// a number — every number that exists is kept, tagged verified or unverified:
+//
+//   VERIFIED   = a real SA mobile (06x / 07x / 081–084) that normalizes
+//                cleanly to a 9-digit +27 national number.
+//   UNVERIFIED = anything else: landlines (021, 011, …), 080x toll-free,
+//                085, 086 sharecall, 087 VoIP, 088/089 non-geographic,
+//                ambiguous lengths, or unparseable.
+//
+// Parseable numbers are normalized to E.164 (+27XXXXXXXXX). A completely
+// unparseable string is kept verbatim (parseable: false). The caller is
+// responsible for excluding businesses that have NO phone number at all.
+
+export type ZaPhoneStatus = 'verified' | 'unverified';
+
+export interface ZaPhoneResult {
+  e164: string;            // E.164 if parseable, otherwise the raw input untouched
+  status: ZaPhoneStatus;   // verified (clean mobile) or unverified (everything else kept)
+  parseable: boolean;      // false => e164 holds the original raw string
+}
+
+export function classifyZaPhone(rawPhone: string | null | undefined): ZaPhoneResult | null {
+  if (!rawPhone || rawPhone.trim().length === 0) return null;
+
+  const original = rawPhone.trim();
+  // Strip everything that isn't a digit: spaces, dashes, parentheses, dots, '+'.
+  const digits = original.replace(/\D/g, '');
+
+  // Reduce to a 9-digit national number where the shape is unambiguous.
+  let national: string | null = null;
+  if (digits.startsWith('27') && digits.length === 11) national = digits.slice(2); // +27XXXXXXXXX
+  else if (digits.startsWith('0') && digits.length === 10) national = digits.slice(1); // 0XXXXXXXXX
+  else if (digits.length === 9 && !digits.startsWith('0')) national = digits; // already national
+
+  if (national && national.length === 9) {
+    const e164 = `+27${national}`;
+    // National number has the leading 0 stripped, so dialed 08x is "8x" here.
+    // Per ICASA, only 06x / 07x and 081–084 are cellular. Within 8x the non-mobile
+    // ranges are 80 (toll-free 080/0800), 85 (reserved/non-cellular), 86 (sharecall),
+    // 87 (VoIP), 88 (non-geographic) and 89 (mass-calling).
+    const prefix2 = national.slice(0, 2);
+    const notMobile = ['80', '85', '86', '87', '88', '89'].includes(prefix2);
+    const isMobile = /^[678]/.test(national) && !notMobile;
+    return { e164, status: isMobile ? 'verified' : 'unverified', parseable: true };
+  }
+
+  // Parseable enough to normalize to E.164, but not a clean 9-digit mobile → unverified.
+  if (digits.startsWith('27') && digits.length > 2) {
+    return { e164: `+27${digits.slice(2)}`, status: 'unverified', parseable: true };
+  }
+  if (digits.startsWith('0') && digits.length > 1) {
+    return { e164: `+27${digits.slice(1)}`, status: 'unverified', parseable: true };
+  }
+
+  // Completely unparseable → keep the raw string, mark unverified. Never dropped.
+  return { e164: original, status: 'unverified', parseable: false };
+}
+
+// ─── SA phone shaped for DB storage ─────────────────────────────────────────
+//
+// This tool is South-Africa-only, so every lead written to the DB is treated as
+// ZA. This wraps classifyZaPhone() so the DB-write path and the CSV-export path
+// share ONE SA implementation (no second classifier to keep in sync):
+//
+//   phone  = +27 E.164 (or the raw string if unparseable, never dropped)
+//   mobile = true for a verified SA mobile (06x/07x/08x, SMS-capable),
+//            false for landlines / 086 / 087 / 0800 / unparseable,
+//            null when there is no phone at all.
+//
+// NOTE: do NOT use normalizePhone() for SA leads — its leading-0 branch defaults
+// to UK (+44) and mislabels SA mobiles as landlines.
+
+export interface ZaStorageResult {
+  phone: string | null;
+  mobile: boolean | null;
+}
+
+export function zaPhoneForStorage(rawPhone: string | null | undefined): ZaStorageResult {
+  const za = classifyZaPhone(rawPhone);
+  if (!za) return { phone: null, mobile: null };
+  return { phone: za.e164, mobile: za.status === 'verified' };
+}
