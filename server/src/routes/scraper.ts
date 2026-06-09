@@ -18,55 +18,19 @@ const scraperLimiter = rateLimit({
   message: { error: 'Too many scrape requests, please wait a minute.' },
 });
 
-// A run is a list of (category × location) pairs — no vertical is assumed.
-// e.g. [{ category: 'plumbers', location: 'Durbanville' }, ...]
 const searchSchema = z.object({
-  pairs: z
-    .array(
-      z.object({
-        category: z.string().min(1),
-        location: z.string().min(1),
-      })
-    )
-    .min(1)
-    .max(50),
+  industry: z.string().min(1),
+  location: z.string().min(1),
   maxResults: z.number().min(1).max(60).optional().default(20),
 });
 
-// A Places "website" that is just a Facebook/Instagram page counts as NO website.
-const SOCIAL_HOSTS = ['facebook.com', 'fb.com', 'fb.me', 'instagram.com', 'instagr.am'];
-function isRealWebsite(url?: string | null): boolean {
-  if (!url || url.trim().length === 0) return false;
-  const lower = url.toLowerCase();
-  return !SOCIAL_HOSTS.some((host) => lower.includes(host));
-}
-
-// ─── CSV helpers ────────────────────────────────────────────────────────────
-const CSV_COLUMNS = ['business_name', 'phone', 'business_type', 'location', 'status'] as const;
-
-function csvField(value: string): string {
-  const s = value ?? '';
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function toCsv(rows: Array<Record<(typeof CSV_COLUMNS)[number], string>>): string {
-  const lines = [CSV_COLUMNS.join(',')];
-  for (const row of rows) {
-    lines.push(CSV_COLUMNS.map((col) => csvField(row[col])).join(','));
-  }
-  // Prepend a UTF-8 BOM so Excel/Sheets read accented SA business names correctly.
-  return '﻿' + lines.join('\r\n');
-}
-
 // POST /api/scraper/search
-// Runs each (category × location) pair through Google Places, keeps only
-// businesses with NO website (a Facebook/Instagram link counts as no website),
-// validates phones (kept, never dropped — see classifyZaPhone), dedupes by phone
-// within the run, and streams back a CSV the browser downloads.
-// No GHL push and no messaging — the CSV is imported into GHL manually.
+// Scrapes Google Places for (industry × location) and returns ALL results as JSON
+// — no website filter. Phones are classified as ZA (+27 E.164) so the UI display
+// and the saved leads agree. The UI saves these straight to the DB via /scraper/save.
 router.post('/search', scraperLimiter, async (req: AuthRequest, res: Response) => {
   try {
-    const { pairs, maxResults } = searchSchema.parse(req.body);
+    const { industry, location, maxResults } = searchSchema.parse(req.body);
 
     const settings = await prisma.settings.findUnique({
       where: { userId: req.user!.userId },
@@ -79,57 +43,20 @@ router.post('/search', scraperLimiter, async (req: AuthRequest, res: Response) =
       });
     }
 
-    const rows: Array<Record<(typeof CSV_COLUMNS)[number], string>> = [];
-    const seenPhones = new Set<string>();
-    const skippedNoPhone: string[] = [];
-    let skippedHasWebsite = 0;
+    const results = await searchBusinesses(industry, location, apiKey, maxResults);
 
-    for (const { category, location } of pairs) {
-      const results = await searchBusinesses(category, location, apiKey, maxResults);
+    // Normalize phones to ZA (+27). classifyZaPhone never drops a number; businesses
+    // with no phone keep an empty string here and are excluded at save time.
+    const enriched = results.map((r) => {
+      const za = classifyZaPhone(r.phone);
+      return {
+        ...r,
+        phone: za ? za.e164 : '',
+        phoneStatus: (za ? za.status : 'none') as 'verified' | 'unverified' | 'none',
+      };
+    });
 
-      for (const r of results) {
-        // Only businesses with no website (social-only counts as no website).
-        if (isRealWebsite(r.websiteUrl)) {
-          skippedHasWebsite++;
-          continue;
-        }
-
-        // No phone at all → exclude from CSV, but log it.
-        const phone = classifyZaPhone(r.phone);
-        if (!phone) {
-          skippedNoPhone.push(`${r.businessName} — ${category} / ${location}`);
-          continue;
-        }
-
-        // Dedupe on phone within the run.
-        if (seenPhones.has(phone.e164)) continue;
-        seenPhones.add(phone.e164);
-
-        rows.push({
-          business_name: r.businessName,
-          phone: phone.e164,
-          business_type: category,
-          location,
-          status: phone.status,
-        });
-      }
-    }
-
-    if (skippedNoPhone.length > 0) {
-      console.log(
-        `[scraper] Excluded ${skippedNoPhone.length} business(es) with no phone number:`
-      );
-      for (const name of skippedNoPhone) console.log(`  - ${name}`);
-    }
-    console.log(
-      `[scraper] CSV export: ${rows.length} rows ` +
-        `(${skippedHasWebsite} skipped: has website, ${skippedNoPhone.length} skipped: no phone)`
-    );
-
-    const stamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="leads-${stamp}.csv"`);
-    res.send(toCsv(rows));
+    res.json({ results: enriched, count: enriched.length });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: err.errors[0].message });
@@ -166,43 +93,64 @@ router.post('/save', async (req: AuthRequest, res: Response) => {
       })
       .parse(req.body);
 
-    // Avoid duplicates by placeId
+    // Classify phones as ZA (+27), exclude businesses with no phone, and dedupe by
+    // phone within this batch. (SA-only tool — zaPhoneForStorage; normalizePhone
+    // defaulted to UK.) ALL websites are kept — website status is persisted, not filtered.
+    const seenPhones = new Set<string>();
+    let skippedNoPhone = 0;
+    let skippedDuplicatePhone = 0;
+    const candidates: Array<{ lead: (typeof leads)[number]; phone: string; mobile: boolean | null }> = [];
+    for (const lead of leads) {
+      const za = zaPhoneForStorage(lead.phone);
+      if (!za.phone) {
+        skippedNoPhone++;
+        continue;
+      }
+      if (seenPhones.has(za.phone)) {
+        skippedDuplicatePhone++;
+        continue;
+      }
+      seenPhones.add(za.phone);
+      candidates.push({ lead, phone: za.phone, mobile: za.mobile });
+    }
+
+    // Avoid duplicates across runs by placeId.
     const existingPlaceIds = new Set(
       (
         await prisma.lead.findMany({
           where: {
             userId: req.user!.userId,
-            placeId: { in: leads.map((l) => l.placeId).filter(Boolean) as string[] },
+            placeId: { in: candidates.map((c) => c.lead.placeId).filter(Boolean) as string[] },
           },
           select: { placeId: true },
         })
       ).map((l) => l.placeId)
     );
 
-    const newLeads = leads.filter(
-      (l) => !l.placeId || !existingPlaceIds.has(l.placeId)
+    const newCandidates = candidates.filter(
+      (c) => !c.lead.placeId || !existingPlaceIds.has(c.lead.placeId)
     );
+    const skippedDuplicatePlace = candidates.length - newCandidates.length;
 
     const created = await prisma.lead.createMany({
-      data: newLeads.map((lead) => {
-        // SA-only tool → classify as ZA (+27). normalizePhone would default to UK.
-        const za = zaPhoneForStorage(lead.phone);
-        return {
-          ...lead,
-          phone: za.phone || lead.phone || null,
-          phoneMobile: za.mobile,
-          googleRating: lead.googleRating ?? null,
-          reviewCount: lead.reviewCount ?? null,
-          userId: req.user!.userId,
-        };
-      }),
+      data: newCandidates.map(({ lead, phone, mobile }) => ({
+        ...lead,
+        phone,
+        phoneMobile: mobile,
+        googleRating: lead.googleRating ?? null,
+        reviewCount: lead.reviewCount ?? null,
+        userId: req.user!.userId,
+      })),
     });
 
+    const newLeads = newCandidates.map((c) => c.lead);
     const websiteLeadCount = newLeads.filter((l) => l.websiteUrl).length;
 
     res.status(201).json({
       saved: created.count,
       skipped: leads.length - created.count,
+      skippedNoPhone,
+      skippedDuplicate: skippedDuplicatePhone + skippedDuplicatePlace,
     });
 
     // Auto-enrich in background AFTER response is sent — wrapped in its own try-catch
