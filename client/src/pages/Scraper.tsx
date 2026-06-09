@@ -98,6 +98,12 @@ export default function Scraper() {
   const selectedCount = results.filter((r) => r.selected).length;
   const allSelected = savable.length > 0 && savable.every((r) => r.selected);
 
+  // Display-only sort: businesses with NO website first, then those with a website.
+  // Array.prototype.sort is stable, so the fetched order is preserved within each
+  // group. This reorders only how the table renders — state, the Places API call,
+  // and the Leads tab are untouched. (no-website = website URL empty/null.)
+  const displayResults = [...results].sort((a, b) => (a.websiteUrl ? 1 : 0) - (b.websiteUrl ? 1 : 0));
+
   const toggleOne = (placeId: string) =>
     setResults((prev) => prev.map((r) => (r.placeId === placeId ? { ...r, selected: !r.selected } : r)));
 
@@ -301,7 +307,7 @@ export default function Scraper() {
                 </tr>
               </thead>
               <tbody>
-                {results.map((lead) => (
+                {displayResults.map((lead) => (
                   <tr key={lead.placeId} className="table-row">
                     <td className="table-cell">
                       {lead.phone ? (
