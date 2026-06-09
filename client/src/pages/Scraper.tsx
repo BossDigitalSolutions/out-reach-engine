@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Search, Save, Download, Globe, Star, Phone, MapPin, AlertCircle } from 'lucide-react';
+import {
+  Search,
+  Save,
+  Download,
+  Globe,
+  Star,
+  Phone,
+  MapPin,
+  AlertCircle,
+  CheckSquare,
+  Square,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { scraperApi } from '../lib/api';
 
@@ -35,6 +46,7 @@ interface ScrapedLead {
   description: string;
   city: string;
   state: string;
+  selected?: boolean;
 }
 
 function csvField(v: string): string {
@@ -51,20 +63,15 @@ export default function Scraper() {
 
   const effectiveIndustry = (industry === 'custom' ? customIndustry : industry).trim();
 
-  // Primary action: scrape Google Places, then save ALL results to the DB.
+  // Search = scrape only. Nothing is saved until you pick leads and hit Save.
   const searchMutation = useMutation({
     mutationFn: async () => {
-      const searchRes = await scraperApi.search(effectiveIndustry, location.trim(), maxResults);
-      const scraped = (searchRes.data.results as ScrapedLead[]) || [];
-      const saveRes = await scraperApi.save(scraped);
-      return { scraped, save: saveRes.data };
+      const res = await scraperApi.search(effectiveIndustry, location.trim(), maxResults);
+      return (res.data.results as ScrapedLead[]) || [];
     },
-    onSuccess: ({ scraped, save }) => {
-      setResults(scraped);
-      const bits = [`Saved ${save.saved} lead${save.saved !== 1 ? 's' : ''}`];
-      if (save.skippedDuplicate) bits.push(`${save.skippedDuplicate} duplicate${save.skippedDuplicate !== 1 ? 's' : ''} skipped`);
-      if (save.skippedNoPhone) bits.push(`${save.skippedNoPhone} no-phone skipped`);
-      toast.success(`${bits.join(' · ')} — see the Leads tab`);
+    onSuccess: (scraped) => {
+      setResults(scraped.map((r) => ({ ...r, selected: false })));
+      toast.success(`Found ${scraped.length} business${scraped.length !== 1 ? 'es' : ''} — select the ones to save`);
     },
     onError: (err: unknown) => {
       const msg =
@@ -73,10 +80,42 @@ export default function Scraper() {
     },
   });
 
+  // Save only the leads you selected.
+  const saveMutation = useMutation({
+    mutationFn: (leads: ScrapedLead[]) => scraperApi.save(leads).then((r) => r.data),
+    onSuccess: (data) => {
+      const bits = [`Saved ${data.saved} lead${data.saved !== 1 ? 's' : ''}`];
+      if (data.skippedDuplicate) bits.push(`${data.skippedDuplicate} duplicate${data.skippedDuplicate !== 1 ? 's' : ''} skipped`);
+      if (data.skippedNoPhone) bits.push(`${data.skippedNoPhone} no-phone skipped`);
+      toast.success(`${bits.join(' · ')} — see the Leads tab`);
+      setResults((prev) => prev.map((r) => ({ ...r, selected: false })));
+    },
+    onError: () => toast.error('Failed to save leads'),
+  });
+
+  // Only businesses with a phone can be saved (the server excludes no-phone anyway).
+  const savable = results.filter((r) => r.phone);
+  const selectedCount = results.filter((r) => r.selected).length;
+  const allSelected = savable.length > 0 && savable.every((r) => r.selected);
+
+  const toggleOne = (placeId: string) =>
+    setResults((prev) => prev.map((r) => (r.placeId === placeId ? { ...r, selected: !r.selected } : r)));
+
+  const toggleAll = () => {
+    const target = !allSelected;
+    setResults((prev) => prev.map((r) => (r.phone ? { ...r, selected: target } : r)));
+  };
+
   const runSearch = () => {
     if (!effectiveIndustry) return toast.error('Pick or type an industry');
     if (!location.trim()) return toast.error('Enter a location');
     searchMutation.mutate();
+  };
+
+  const saveSelected = () => {
+    const selected = results.filter((r) => r.selected);
+    if (!selected.length) return toast.error('Select at least one lead');
+    saveMutation.mutate(selected);
   };
 
   // Secondary/optional: export the current results to CSV (no extra scrape).
@@ -115,8 +154,8 @@ export default function Scraper() {
       <div>
         <h1 className="text-2xl font-bold text-slate-100">Lead Scraper</h1>
         <p className="text-slate-400 text-sm mt-1">
-          Search a vertical via Google Places. Results save straight to the Leads tab, where you can
-          select them and Sync to GHL.
+          Search a vertical via Google Places, then pick the leads you want and save them to the
+          Leads tab, where you can Sync to GHL.
         </p>
       </div>
 
@@ -191,25 +230,37 @@ export default function Scraper() {
             {searchMutation.isPending ? (
               <>
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Searching &amp; saving...
+                Searching...
               </>
             ) : (
               <>
                 <Search size={16} />
-                Search &amp; Save to Leads
-                <Save size={16} />
+                Search Businesses
               </>
             )}
           </button>
 
           {results.length > 0 && (
-            <button
-              className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-slate-700 text-slate-300 hover:border-slate-600 hover:text-slate-200 transition-colors"
-              onClick={downloadCsv}
-            >
-              <Download size={14} />
-              Download CSV
-            </button>
+            <>
+              {selectedCount > 0 && (
+                <button
+                  className="btn-primary flex items-center gap-2"
+                  onClick={saveSelected}
+                  disabled={saveMutation.isPending}
+                >
+                  <Save size={16} />
+                  {saveMutation.isPending ? 'Saving...' : `Save ${selectedCount} Lead${selectedCount !== 1 ? 's' : ''}`}
+                </button>
+              )}
+
+              <button
+                className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-slate-700 text-slate-300 hover:border-slate-600 hover:text-slate-200 transition-colors"
+                onClick={downloadCsv}
+              >
+                <Download size={14} />
+                Download CSV
+              </button>
+            </>
           )}
         </div>
 
@@ -221,19 +272,27 @@ export default function Scraper() {
         )}
       </div>
 
-      {/* Results — confirmation of what was saved */}
+      {/* Results — pick which to save */}
       {results.length > 0 && (
         <div className="card p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-800 text-sm text-slate-400">
-            {results.length} result{results.length !== 1 ? 's' : ''} from this search — saved to the{' '}
-            <span className="text-slate-300 font-medium">Leads</span> tab (no-phone and duplicate-phone
-            businesses skipped).
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <button onClick={toggleAll} className="text-slate-400 hover:text-slate-200" title="Select all savable">
+                {allSelected ? <CheckSquare size={18} className="text-blue-400" /> : <Square size={18} />}
+              </button>
+              <span className="text-sm text-slate-400">
+                {results.length} result{results.length !== 1 ? 's' : ''}
+                {selectedCount > 0 && ` · ${selectedCount} selected`}
+              </span>
+            </div>
+            <span className="text-xs text-slate-500">Tick the leads you want, then Save.</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr>
+                  <th className="table-header w-10"></th>
                   <th className="table-header text-left">Business</th>
                   <th className="table-header text-left">Location</th>
                   <th className="table-header text-left">Phone</th>
@@ -244,6 +303,24 @@ export default function Scraper() {
               <tbody>
                 {results.map((lead) => (
                   <tr key={lead.placeId} className="table-row">
+                    <td className="table-cell">
+                      {lead.phone ? (
+                        <button
+                          onClick={() => toggleOne(lead.placeId)}
+                          className="text-slate-400 hover:text-slate-200"
+                        >
+                          {lead.selected ? (
+                            <CheckSquare size={16} className="text-blue-400" />
+                          ) : (
+                            <Square size={16} />
+                          )}
+                        </button>
+                      ) : (
+                        <span title="No phone — can't be saved" className="text-slate-700">
+                          <Square size={16} />
+                        </span>
+                      )}
+                    </td>
                     <td className="table-cell">
                       <p className="font-medium text-slate-200">{lead.businessName}</p>
                       {lead.description && (
@@ -272,7 +349,7 @@ export default function Scraper() {
                           </span>
                         </div>
                       ) : (
-                        <span className="text-orange-400 text-xs">no phone (skipped)</span>
+                        <span className="text-orange-400 text-xs">no phone</span>
                       )}
                     </td>
                     <td className="table-cell">
