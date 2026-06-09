@@ -1,16 +1,53 @@
 import axios from 'axios';
 
-interface PlaceResult {
-  place_id: string;
-  name: string;
-  formatted_address: string;
-  formatted_phone_number?: string;
-  website?: string;
-  rating?: number;
-  user_ratings_total?: number;
+// ─── Google Places API (New) — Text Search ──────────────────────────────────
+//
+// Uses places.googleapis.com/v1/places:searchText. The legacy
+// maps.googleapis.com/.../textsearch/json endpoint is deprecated for this project
+// and its next_page_token pagination returns INVALID_REQUEST regardless of the
+// 2s token delay, so it cannot be used for maxResults > 20.
+//
+// The New API returns phone (national + international) and website INLINE, so no
+// per-place Details call is needed, and paginates via pageToken (valid immediately).
+
+const SEARCH_TEXT_URL = 'https://places.googleapis.com/v1/places:searchText';
+
+// Fields we need. NOTE: requesting contact/atmosphere fields (phone, website,
+// rating) bills at the higher "Text Search (Advanced)" SKU — same data the old
+// code paid for via Place Details, but in one call instead of N.
+const FIELD_MASK = [
+  'places.id',
+  'places.displayName',
+  'places.formattedAddress',
+  'places.nationalPhoneNumber',
+  'places.internationalPhoneNumber',
+  'places.websiteUri',
+  'places.rating',
+  'places.userRatingCount',
+  'places.types',
+  'places.editorialSummary',
+  'places.addressComponents',
+  'nextPageToken',
+].join(',');
+
+interface NewAddressComponent {
+  longText?: string;
+  shortText?: string;
   types?: string[];
-  editorial_summary?: { overview: string };
-  opening_hours?: { open_now: boolean };
+}
+
+interface NewPlace {
+  id: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  nationalPhoneNumber?: string;
+  internationalPhoneNumber?: string;
+  websiteUri?: string;
+  rating?: number;
+  userRatingCount?: number;
+  types?: string[];
+  editorialSummary?: { text?: string };
+  addressComponents?: NewAddressComponent[];
 }
 
 interface SearchResult {
@@ -37,78 +74,69 @@ export async function searchBusinesses(
   const query = `${industry} in ${location}`;
   const results: SearchResult[] = [];
 
-  let nextPageToken: string | undefined;
-  let fetched = 0;
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Goog-Api-Key': apiKey,
+    'X-Goog-FieldMask': FIELD_MASK,
+  };
+
+  let pageToken: string | undefined;
 
   do {
-    const params: Record<string, string> = {
-      query,
-      key: apiKey,
+    // searchText returns max 20 per page. pageSize is ignored once pageToken is set,
+    // so the first page's size governs subsequent pages.
+    const body: Record<string, unknown> = {
+      textQuery: query,
+      pageSize: Math.min(20, maxResults),
     };
-    if (nextPageToken) {
-      params.pagetoken = nextPageToken;
-      // Google requires a short delay before using page token
-      await new Promise((r) => setTimeout(r, 2000));
+    if (pageToken) body.pageToken = pageToken;
+
+    let data: { places?: NewPlace[]; nextPageToken?: string };
+    try {
+      const res = await axios.post(SEARCH_TEXT_URL, body, { headers });
+      data = res.data;
+    } catch (err) {
+      // The New API returns { error: { code, message, status } } — surface it (unlike
+      // the legacy endpoint, this message is populated, e.g. on quota/permission issues).
+      const apiErr = (err as { response?: { data?: { error?: { status?: string; code?: number; message?: string } } } })
+        .response?.data?.error;
+      if (apiErr) {
+        throw new Error(
+          `Google Places API error: ${apiErr.status || apiErr.code} - ${apiErr.message || ''}`
+        );
+      }
+      throw err;
     }
 
-    const searchRes = await axios.get(
-      'https://maps.googleapis.com/maps/api/place/textsearch/json',
-      { params }
-    );
-
-    if (searchRes.data.status !== 'OK' && searchRes.data.status !== 'ZERO_RESULTS') {
-      throw new Error(`Google Places API error: ${searchRes.data.status} - ${searchRes.data.error_message || ''}`);
-    }
-
-    const places: PlaceResult[] = searchRes.data.results || [];
-    nextPageToken = searchRes.data.next_page_token;
+    const places = data.places || [];
+    pageToken = data.nextPageToken;
 
     for (const place of places) {
-      if (fetched >= maxResults) break;
+      if (results.length >= maxResults) break;
 
-      // Get place details
-      const detailRes = await axios.get(
-        'https://maps.googleapis.com/maps/api/place/details/json',
-        {
-          params: {
-            place_id: place.place_id,
-            fields:
-              'name,formatted_phone_number,formatted_address,website,rating,user_ratings_total,types,editorial_summary,address_components',
-            key: apiKey,
-          },
-        }
-      );
-
-      const detail: PlaceResult = detailRes.data.result || {};
-      const addressComponents: Array<{ long_name: string; short_name: string; types: string[] }> =
-        detailRes.data.result?.address_components || [];
-
-      const city =
-        addressComponents.find((c) => c.types.includes('locality'))?.long_name || '';
+      const components = place.addressComponents || [];
+      const city = components.find((c) => c.types?.includes('locality'))?.longText || '';
       const state =
-        addressComponents.find((c) => c.types.includes('administrative_area_level_1'))
-          ?.short_name || '';
+        components.find((c) => c.types?.includes('administrative_area_level_1'))?.shortText || '';
+      const websiteUrl = place.websiteUri || '';
 
       results.push({
-        placeId: place.place_id,
-        businessName: detail.name || place.name,
-        address: detail.formatted_address || place.formatted_address || '',
-        phone: detail.formatted_phone_number || '',
-        websiteUrl: detail.website || '',
-        hasWebsite: !!detail.website,
-        googleRating: detail.rating ?? null,
-        reviewCount: detail.user_ratings_total ?? null,
+        placeId: place.id,
+        businessName: place.displayName?.text || '',
+        address: place.formattedAddress || '',
+        // internationalPhoneNumber is already +27…; classifyZaPhone normalizes either form.
+        phone: place.internationalPhoneNumber || place.nationalPhoneNumber || '',
+        websiteUrl,
+        hasWebsite: !!websiteUrl,
+        googleRating: place.rating ?? null,
+        reviewCount: place.userRatingCount ?? null,
         industry,
-        description: detail.editorial_summary?.overview || '',
+        description: place.editorialSummary?.text || '',
         city,
         state,
       });
-
-      fetched++;
-      // Rate limiting: small delay between detail calls
-      await new Promise((r) => setTimeout(r, 200));
     }
-  } while (nextPageToken && fetched < maxResults);
+  } while (pageToken && results.length < maxResults);
 
   return results;
 }
