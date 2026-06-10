@@ -40,6 +40,7 @@ export const authApi = {
 export const leadsApi = {
   list: (params?: Record<string, unknown>) => api.get('/leads', { params }),
   getIndustries: () => api.get('/leads/industries'),
+  getLocations: () => api.get('/leads/locations'),
   get: (id: string) => api.get(`/leads/${id}`),
   create: (data: Record<string, unknown>) => api.post('/leads', data),
   update: (id: string, data: Record<string, unknown>) => api.put(`/leads/${id}`, data),

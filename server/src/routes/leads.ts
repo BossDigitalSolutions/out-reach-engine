@@ -36,6 +36,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const {
       status,
       industry,
+      location,
       hasWebsite,
       search,
       sortBy,
@@ -50,6 +51,19 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     }
     if (industry) {
       where.industry = { contains: industry as string, mode: 'insensitive' };
+    }
+    // Location filter. Values come from GET /leads/locations as "City, ST" (or just
+    // "City" when state is empty). city/state are separate columns, so split on the
+    // last ", " and match the exact pair. Combines (ANDs) with the other filters.
+    if (location) {
+      const loc = location as string;
+      const sep = loc.lastIndexOf(', ');
+      if (sep === -1) {
+        where.city = loc;
+      } else {
+        where.city = loc.slice(0, sep);
+        where.state = loc.slice(sep + 2);
+      }
     }
     if (hasWebsite !== undefined && hasWebsite !== '') {
       where.hasWebsite = hasWebsite === 'true';
@@ -103,6 +117,28 @@ router.get('/industries', async (req: AuthRequest, res: Response) => {
     res.json(industries);
   } catch {
     res.status(500).json({ error: 'Failed to fetch industries' });
+  }
+});
+
+// GET /api/leads/locations — distinct "City, ST" location values for current user.
+// Derived live from city/state on the leads, so it updates as new areas are scraped.
+router.get('/locations', async (req: AuthRequest, res: Response) => {
+  try {
+    const rows = await prisma.lead.findMany({
+      where: { userId: req.user!.userId, city: { not: null } },
+      select: { city: true, state: true },
+      distinct: ['city', 'state'],
+    });
+    const locations = Array.from(
+      new Set(
+        rows
+          .filter((r) => r.city && r.city.trim())
+          .map((r) => (r.state ? `${r.city}, ${r.state}` : r.city) as string)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+    res.json(locations);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch locations' });
   }
 });
 

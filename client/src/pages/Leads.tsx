@@ -156,6 +156,7 @@ export default function Leads() {
   const [minutesBetween, setMinutesBetween] = useState(5);
   const [sortBy, setSortBy] = useState('createdAt');
   const [industryFilter, setIndustryFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
@@ -176,6 +177,12 @@ export default function Leads() {
   });
   const industries: string[] = industriesData || [];
 
+  const { data: locationsData } = useQuery({
+    queryKey: ['lead-locations'],
+    queryFn: () => leadsApi.getLocations().then((r) => r.data),
+  });
+  const locations: string[] = locationsData || [];
+
   const { data: demosData } = useQuery({
     queryKey: ['demos'],
     queryFn: () => demosApi.list().then((r) => r.data),
@@ -183,7 +190,7 @@ export default function Leads() {
   const demos: { id: string; label: string; industry: string }[] = demosData || [];
 
   const { data, isLoading } = useQuery({
-    queryKey: ['leads', page, search, status, hasWebsite, sortBy, industryFilter],
+    queryKey: ['leads', page, search, status, hasWebsite, sortBy, industryFilter, locationFilter],
     queryFn: () =>
       leadsApi
         .list({
@@ -194,6 +201,7 @@ export default function Leads() {
           hasWebsite: hasWebsite !== '' ? hasWebsite : undefined,
           sortBy,
           industry: industryFilter || undefined,
+          location: locationFilter || undefined,
         })
         .then((r) => r.data),
   });
@@ -673,6 +681,23 @@ export default function Leads() {
             </button>
           )}
         </div>
+
+        <select
+          className="select"
+          value={locationFilter}
+          onChange={(e) => {
+            setLocationFilter(e.target.value);
+            setPage(1);
+            setSelected(new Set());
+          }}
+        >
+          <option value="">All locations</option>
+          {locations.map((loc) => (
+            <option key={loc} value={loc}>
+              {loc}
+            </option>
+          ))}
+        </select>
 
         <div className="flex items-center gap-1.5 text-sm text-slate-400">
           <ArrowUpDown size={14} />
