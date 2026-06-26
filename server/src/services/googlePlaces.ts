@@ -50,7 +50,7 @@ interface NewPlace {
   addressComponents?: NewAddressComponent[];
 }
 
-interface SearchResult {
+export interface SearchResult {
   placeId: string;
   businessName: string;
   address: string;

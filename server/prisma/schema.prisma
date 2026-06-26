@@ -95,6 +95,7 @@ model Settings {
   ghlPhoneNumberUS   String?
   ghlPhoneNumberZA   String?
   firecrawlApiKey    String?
+  apifyApiKey        String?
   smsWarmupStartDate DateTime?
   smsDailyLimit      Int     @default(150)
 

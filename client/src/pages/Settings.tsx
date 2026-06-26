@@ -55,6 +55,7 @@ interface Settings {
   hasAnthropicApiKey: boolean;
   hasSendgridApiKey: boolean;
   hasFirecrawlApiKey: boolean;
+  hasApifyApiKey: boolean;
   hasWhatsAppToken: boolean;
   whatsAppPhoneId?: string;
   hasGhlApiKey: boolean;
@@ -69,6 +70,7 @@ const API_KEY_FIELDS = [
   { key: 'anthropicApiKey', label: 'Anthropic (Claude) API Key', placeholder: 'sk-ant-...' },
   { key: 'sendgridApiKey', label: 'SendGrid API Key', placeholder: 'SG...' },
   { key: 'firecrawlApiKey', label: 'Firecrawl API Key', placeholder: 'fc-...' },
+  { key: 'apifyApiKey', label: 'Apify API Token', placeholder: 'apify_api_...' },
 ];
 
 export default function Settings() {

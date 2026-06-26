@@ -18,6 +18,7 @@ const ADMIN_ONLY_FIELDS = [
   'whatsAppToken',
   'ghlApiKey',
   'firecrawlApiKey',
+  'apifyApiKey',
   'ghlLocationId',
   'ghlPhoneNumber',
   'ghlPhoneNumberUS',
@@ -30,6 +31,7 @@ const settingsSchema = z.object({
   anthropicApiKey: z.string().optional(),
   sendgridApiKey: z.string().optional(),
   firecrawlApiKey: z.string().optional(),
+  apifyApiKey: z.string().optional(),
   whatsAppPhoneId: z.string().optional(),
   whatsAppToken: z.string().optional(),
   ghlApiKey: z.string().optional(),
@@ -64,6 +66,7 @@ export async function getDecryptedSettings(userId: string) {
     whatsAppToken: decryptField(settings.whatsAppToken),
     ghlApiKey: decryptField(settings.ghlApiKey),
     firecrawlApiKey: decryptField((settings as Record<string, unknown>).firecrawlApiKey as string | null | undefined),
+    apifyApiKey: decryptField(settings.apifyApiKey),
   };
 }
 
@@ -81,6 +84,7 @@ function maskApiKeys(settings: Record<string, unknown>, isAdmin: boolean) {
     base.hasWhatsAppToken = false;
     base.hasGhlApiKey = false;
     base.hasFirecrawlApiKey = false;
+    base.hasApifyApiKey = false;
     return base;
   }
 
@@ -92,12 +96,14 @@ function maskApiKeys(settings: Record<string, unknown>, isAdmin: boolean) {
     whatsAppToken: settings.whatsAppToken ? '••••••••' : null,
     ghlApiKey: settings.ghlApiKey ? '••••••••' : null,
     firecrawlApiKey: settings.firecrawlApiKey ? '••••••••' : null,
+    apifyApiKey: settings.apifyApiKey ? '••••••••' : null,
     hasGoogleApiKey: !!settings.googleApiKey,
     hasAnthropicApiKey: !!settings.anthropicApiKey,
     hasSendgridApiKey: !!settings.sendgridApiKey,
     hasWhatsAppToken: !!settings.whatsAppToken,
     hasGhlApiKey: !!settings.ghlApiKey,
     hasFirecrawlApiKey: !!settings.firecrawlApiKey,
+    hasApifyApiKey: !!settings.apifyApiKey,
   };
 }
 
@@ -146,8 +152,11 @@ router.put('/', async (req: AuthRequest, res: Response) => {
     const clean: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data)) {
       if (v === '' || v === undefined) continue;
-      // Encrypt API key fields
-      if (ADMIN_ONLY_FIELDS.slice(0, 8).includes(k) && typeof v === 'string') {
+      // Encrypt API key fields. NOTE: this relies on the first 9 entries of
+      // ADMIN_ONLY_FIELDS being the encrypted secrets (googleApiKey…apifyApiKey) and
+      // the rest (ghlLocationId, ghl phone numbers) being plaintext — keep new
+      // encrypted keys within this prefix and bump the slice if you add one.
+      if (ADMIN_ONLY_FIELDS.slice(0, 9).includes(k) && typeof v === 'string') {
         clean[k] = encryptField(v);
       } else {
         clean[k] = v;

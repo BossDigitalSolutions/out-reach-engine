@@ -3,7 +3,8 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { prisma } from '../index';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { searchBusinesses } from '../services/googlePlaces';
+import { searchBusinesses, type SearchResult } from '../services/googlePlaces';
+import { searchBusinessesApify } from '../services/apifyPlaces';
 import { scrapeWebsite } from '../services/websiteScraper';
 import { calculateScore } from '../services/scoring';
 import { decryptField } from '../services/encryption';
@@ -11,6 +12,14 @@ import { classifyZaPhone, zaPhoneForStorage } from '../services/phoneUtils';
 
 const router = Router();
 router.use(authenticate);
+
+// ─── Lead data source ────────────────────────────────────────────────────────
+// Apify (compass/crawler-google-places) is the active scraper — far cheaper than
+// the Google Places API, which once ran up a $600 bill in days. The Google
+// integration (services/googlePlaces.ts + its API key) is kept intact as disabled
+// dead-code fallback and ONLY runs if this constant is manually switched back to
+// 'google'. This is deliberately NOT exposed in the UI — change it here, in code.
+const SCRAPER_PROVIDER: 'apify' | 'google' = 'apify';
 
 const scraperLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -36,14 +45,26 @@ router.post('/search', scraperLimiter, async (req: AuthRequest, res: Response) =
       where: { userId: req.user!.userId },
     });
 
-    const apiKey = decryptField(settings?.googleApiKey) || process.env.GOOGLE_PLACES_API_KEY;
-    if (!apiKey) {
-      return res.status(400).json({
-        error: 'Google Places API key not configured. Add it in Settings.',
-      });
+    // Fetch from the active provider. Both return the identical SearchResult[] shape,
+    // so everything below (phone classification, save, dedupe, GHL sync) is unchanged.
+    let results: SearchResult[];
+    if (SCRAPER_PROVIDER === 'apify') {
+      const apifyToken = decryptField(settings?.apifyApiKey) || process.env.APIFY_TOKEN;
+      if (!apifyToken) {
+        return res.status(400).json({
+          error: 'Apify API token not configured. Add it in Settings.',
+        });
+      }
+      results = await searchBusinessesApify(industry, location, apifyToken, maxResults);
+    } else {
+      const apiKey = decryptField(settings?.googleApiKey) || process.env.GOOGLE_PLACES_API_KEY;
+      if (!apiKey) {
+        return res.status(400).json({
+          error: 'Google Places API key not configured. Add it in Settings.',
+        });
+      }
+      results = await searchBusinesses(industry, location, apiKey, maxResults);
     }
-
-    const results = await searchBusinesses(industry, location, apiKey, maxResults);
 
     // Normalize phones to ZA (+27). classifyZaPhone never drops a number; businesses
     // with no phone keep an empty string here and are excluded at save time.
