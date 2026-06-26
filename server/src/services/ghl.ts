@@ -59,7 +59,10 @@ export async function syncContactToGhl(
   if (lead.email) payload.email = lead.email;
   if (lead.phone) payload.phone = toE164(lead.phone) || lead.phone;
   if (lead.address) payload.address1 = lead.address;
-  if (lead.city) payload.city = lead.city;
+  // Derive city from the location value ("George, WC" → "George"): take the part
+  // before the first comma, trimmed. Plain string op — never send a partial value.
+  const city = (lead.city || '').split(',')[0].trim();
+  if (city) payload.city = city;
   if (lead.state) payload.state = lead.state;
   if (lead.websiteUrl) payload.website = lead.websiteUrl;
 
